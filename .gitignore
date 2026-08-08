@@ -1,3 +1,7 @@
 venv/
 .env
 __pycache__/
+runs
+old_runs
+test_reply.py
+test.py

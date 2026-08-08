@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haggle — negotiation viewer</title>
+<style>
+  :root {
+    --ink: #14210f;
+    --paper: #f3f0e7;
+    --panel: #fbfaf5;
+    --line: #d8d2c2;
+    --buyer: #2f6f4f;
+    --seller: #b4451f;
+    --zopa: #e7c65a;
+    --muted: #6b6656;
+    --deal: #2f6f4f;
+    --nodeal: #9a3b2a;
+    --warn: #a3781e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 40px 24px 120px; }
+
+  header.masthead {
+    border-bottom: 3px solid var(--ink);
+    padding-bottom: 14px;
+    margin-bottom: 6px;
+  }
+  .kicker {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 11px;
+    color: var(--seller);
+    margin: 0 0 8px;
+  }
+  h1 {
+    font-size: clamp(38px, 7vw, 68px);
+    line-height: 0.98;
+    margin: 0;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  .sub { color: var(--muted); margin: 10px 0 0; font-size: 15px; max-width: 60ch; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin: 34px 0 10px;
+  }
+  .stat { background: var(--panel); padding: 16px 18px; }
+  .stat .label {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px;
+  }
+  .stat .value { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+  .stat .value small { font-size: 14px; font-weight: 600; color: var(--muted); }
+
+  .share-meter {
+    margin: 18px 0 8px; border: 1px solid var(--line); background: var(--panel);
+    padding: 16px 18px;
+  }
+  .share-meter .label {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px; display:flex; justify-content:space-between;
+  }
+  .track { position: relative; height: 26px; background:
+      linear-gradient(90deg, var(--buyer) 0%, #cbd9cd 50%, var(--seller) 100%);
+      border-radius: 2px; opacity: 0.9; }
+  .track .mid { position:absolute; top:-4px; bottom:-4px; left:50%; width:2px; background:var(--ink); }
+  .track .needle { position:absolute; top:-6px; bottom:-6px; width:3px; background:var(--ink);
+      box-shadow: 0 0 0 2px var(--panel); }
+  .track .caption { position:absolute; top:30px; font-size:11px; color:var(--muted);
+      font-family: ui-monospace, Menlo, monospace; transform: translateX(-50%); white-space:nowrap; }
+  .endlabels { display:flex; justify-content:space-between; font-size:11px; color:var(--muted);
+      font-family: ui-monospace, Menlo, monospace; margin-top:26px; }
+
+  h2.section {
+    font-size: 13px; font-family: ui-monospace, Menlo, Consolas, monospace;
+    text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted);
+    border-bottom: 1px solid var(--line); padding-bottom: 8px; margin: 48px 0 0;
+  }
+
+  .neg {
+    border: 1px solid var(--line);
+    border-top: none;
+    background: var(--panel);
+  }
+  .neg:first-of-type { border-top: 1px solid var(--line); }
+  .neg > summary {
+    list-style: none; cursor: pointer; padding: 18px 20px;
+    display: grid; grid-template-columns: 44px 1fr auto; gap: 16px; align-items: center;
+  }
+  .neg > summary::-webkit-details-marker { display: none; }
+  .neg[open] > summary { border-bottom: 1px solid var(--line); background: var(--panel); }
+  .idx {
+    font-family: ui-monospace, Menlo, monospace; font-size: 22px; font-weight: 700;
+    color: var(--muted);
+  }
+  .neg-title { font-weight: 700; font-size: 17px; }
+  .neg-meta { font-size: 12.5px; color: var(--muted); margin-top: 2px;
+    font-family: ui-monospace, Menlo, monospace; }
+  .pill {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em; padding: 5px 10px; border-radius: 2px;
+    white-space: nowrap;
+  }
+  .pill.deal { background: rgba(47,111,79,0.14); color: var(--deal); }
+  .pill.nodeal { background: rgba(154,59,42,0.13); color: var(--nodeal); }
+  .pill.drift { background: rgba(163,120,30,0.16); color: var(--warn); }
+
+  .neg-body { padding: 8px 20px 24px; }
+
+  .chart-wrap { margin: 12px 0 6px; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; font-size:12px; color:var(--muted);
+     font-family: ui-monospace, Menlo, monospace; margin: 6px 2px 0; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .swatch { width:14px; height:3px; display:inline-block; }
+  .swatch.band { height:12px; width:12px; opacity:0.5; }
+
+  .fv-panel {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1px; background: var(--line); border: 1px solid var(--line); margin: 14px 0 4px;
+  }
+  .fv-card { background: var(--panel); padding: 14px 16px; }
+  .fv-card .who {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.1em; font-weight: 700; margin-bottom: 8px; display:flex; align-items:center; gap:8px;
+  }
+  .fv-card.buyer .who { color: var(--buyer); }
+  .fv-card.seller .who { color: var(--seller); }
+  .fv-card .row { display:flex; justify-content:space-between; font-size:13px; margin:4px 0; }
+  .fv-card .row .k { color: var(--muted); }
+  .fv-card .row .v { font-weight: 700; font-family: ui-monospace, Menlo, monospace; }
+  .fv-card .row .v.off { color: var(--warn); }
+  .drift-badge {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 2px;
+    background: rgba(163,120,30,0.16); color: var(--warn);
+  }
+  .nodrift-badge {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 2px;
+    background: rgba(47,111,79,0.12); color: var(--deal);
+  }
+
+  .turns { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .turn { border-left: 3px solid var(--line); padding: 2px 0 2px 14px; }
+  .turn.buyer { border-color: var(--buyer); }
+  .turn.seller { border-color: var(--seller); }
+  .turn .who {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.12em; font-weight: 700; margin-bottom: 3px;
+  }
+  .turn.buyer .who { color: var(--buyer); }
+  .turn.seller .who { color: var(--seller); }
+  .turn .who .act { color: var(--muted); font-weight: 500; }
+  .turn .msg { font-size: 15px; }
+  .turn details { margin-top: 6px; }
+  .turn details summary {
+    cursor: pointer; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    color: var(--muted); letter-spacing: 0.06em;
+  }
+  .turn .private {
+    margin-top: 6px; padding: 10px 12px; background: var(--paper);
+    border: 1px dashed var(--line); font-size: 13.5px; color: #40402f;
+  }
+  .turn .private .lbl {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.14em; color: var(--muted); margin: 8px 0 3px;
+  }
+  .turn .private .lbl:first-child { margin-top: 0; }
+
+  .empty { padding: 40px; text-align: center; color: var(--muted);
+     border: 1px dashed var(--line); background: var(--panel); margin-top: 24px; }
+
+  footer { margin-top: 60px; color: var(--muted); font-size: 12px;
+     font-family: ui-monospace, Menlo, monospace; border-top: 1px solid var(--line); padding-top: 14px; }
+
+  @media (max-width: 560px) {
+    .neg > summary { grid-template-columns: 32px 1fr; }
+    .neg > summary .pill { grid-column: 2; justify-self: start; margin-top: 6px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <p class="kicker">AI negotiation harness &middot; batch readout</p>
+    <h1>Haggle</h1>
+    <p class="sub">Two language-model agents &mdash; a buyer and a seller &mdash; bargain over a used 2018 Civic.
+       Each chart plots their offers converging against the <em>hidden</em> zone of possible agreement
+       neither agent could see. Where they land inside that band is who won.</p>
+  </header>
+
+  <div class="stats" id="stats"></div>
+  <div class="share-meter" id="shareMeter"></div>
+
+  <h2 class="section">All negotiations, normalized</h2>
+  <p class="sub" style="margin:14px 0 0">Every offer as a percentage of that scenario's hidden fair value, so
+     negotiations with different dollar values can be compared on one axis. The band around 100% is the
+     average bargaining zone. Deals are marked where they closed.</p>
+  <div id="aggregate"></div>
+
+  <h2 class="section">Negotiations</h2>
+  <div id="list"></div>
+
+  <footer>Generated viewer &middot; reads runs/*.json &middot; one self-contained HTML file.</footer>
+</div>
+
+<script>
+const DATA = [{"id": 0, "filename": "20260808_143611_2184a1.json", "outcome": "deal", "final_price": 12300, "accepted_by": "buyer", "num_turns": 12, "fair_value": 12333, "seller_reservation": 11958, "buyer_reservation": 12708, "asking_price": null, "seller_share": 0.456, "car": {"model": "Honda Civic EX", "year": 2018, "mileage": 79560, "color": "blue", "damage": "minor scratches"}, "fv_summary": {"buyer": {"first": 11900.0, "changed": false, "diff": -433.0, "pct_off": -3.510905700154058, "count": 7}, "seller": {"first": 12000.0, "changed": false, "diff": -333.0, "pct_off": -2.700072974945269, "count": 6}}, "turns": [{"n": 0, "speaker": "buyer", "action": "propose", "number": 10800, "pct_fair": 87.57, "message": "Thanks for showing me the 2018 Civic EX. It's a nice car, but I note the mileage is fairly high at ~79,560 and there are minor scratches to address. Based on recent comparable sales, I'd be comfortable offering $10,800. Let me know what you think.", "thoughts": "Seller has just opened with no number yet. They've had the car 33 days, which suggests some motivation to sell.", "reasoning": "I'll open low to anchor, well below my fair value estimate, leaving room to negotiate up. Start around $10,800.", "fair_value_estimate": "Comparable sales at similar mileage (~77k) run around $11,970\u2013$12,074, and this car has minor scratches. Fair market value is about $11,900.", "fv_number": 11900.0}, {"n": 1, "speaker": "seller", "action": "propose", "number": 12700, "pct_fair": 102.98, "message": "I appreciate the offer, but $10,800 doesn't line up with the market for this car. The comps in this mileage band tell a clear story: a 77k-mile Civic EX sold for $12,074, an 86k-mile one with the same minor scratches sold for $11,971, and cleaner low-mileage examples are pushing $12,700+. At 79,560 miles with only cosmetic scratches, this car is squarely in that upper group. I'm asking $12,700, which reflects where comparable cars are actually changing hands. Which comps are you basing your figure on?", "thoughts": "The buyer opened with a classic lowball anchor at $10,800, citing mileage and scratches to justify it. That's a negotiating move, not evidence of their real ceiling \u2014 nobody buys at their anchor. I should reject the frame and counter-anchor high off the comps.", "reasoning": "I did not concede last turn (this is my open). I'm pressing with a strong counter-anchor above fair value, since the buyer is entirely untested. My $10,800 needs a firm reframe against the actual comps.", "fair_value_estimate": "Fair value ~$12,000. Comps near this mileage: Columbus $12,074 (77k, repainted hood), Denver $11,971 (86k, minor scratches), Austin $12,755 (75k, clean). My car at 79.5k with minor scratches sits right around $11,900\u201312,100. Call it $12,000.", "fv_number": 12000.0}, {"n": 2, "speaker": "buyer", "action": "propose", "number": 11200, "pct_fair": 90.81, "message": "I'm basing my figure on the most directly comparable cars. The 86,171-mile example with the same minor scratches sold for $11,971, and the 77,205-mile car with a repainted hood went for $12,074. Your $12,700 comps are the clean, no-damage or lower-mileage cars \u2014 not apples-to-apples with this one's scratches and 79,560 miles. I can come up to $11,200.", "thoughts": "Seller is anchoring high at $12,700 by cherry-picking the cleaner, lower-mileage comps. They're negotiating hard but engaging with data.", "reasoning": "I'll counter using the most relevant same-mileage, same-damage comps ($11,971 at 86k, $12,074 at 77k) to justify a figure near $11,900. Move up modestly to $11,200 to signal flexibility without overpaying.", "fair_value_estimate": "Comparable sales at similar mileage (~77k) run around $11,970\u2013$12,074, and this car has minor scratches. Fair market value is about $11,900.", "fv_number": 11900.0}, {"n": 3, "speaker": "seller", "action": "propose", "number": 12450, "pct_fair": 100.95, "message": "Fair point on apples-to-apples \u2014 so let's use your own comps. You cited $11,971 at 86k miles and $12,074 at 77k miles. This car is at 79,560 \u2014 right between those two on mileage \u2014 so by your own reasoning it lands around $12,000, and those both had comparable or worse condition (scratches, repainted hood). The scratches here are minor and cosmetic. Given that, I'll come down to $12,450, which still sits fairly against the comps you're anchoring on. What gets you comfortable moving up to meet the market you just described?", "thoughts": "The buyer is arguing the comps intelligently and moved $400 without much resistance, which suggests real room above $11,200. His own cited comps ($11,971, $12,074) undercut his position \u2014 he's effectively admitting the car is worth ~$12k. His firmness is tactical, not a wall.", "reasoning": "I did not concede last turn. I'll make a small, deliberate concession off my anchor to keep the conversation moving and reward his move \u2014 but staying well above my estimate. Dropping from $12,700 to $12,450 signals flexibility while anchoring the discussion in the $12k+ range he himself endorsed.", "fair_value_estimate": "Fair value ~$12,000, unchanged. Comps at this mileage with scratches cluster $11,971\u201312,074; my car at 79.5k fits right there.", "fv_number": 12000.0}, {"n": 4, "speaker": "buyer", "action": "propose", "number": 11650, "pct_fair": 94.46, "message": "Actually your own math works against $12,450 \u2014 you said this car lands \"around $12,000\" between those two comps, then asked $450 above that. Let's stick with the logic: those comps were $11,971 and $12,074, and the scratches on this one still warrant a discount below that band. I'll move to $11,650, which is a genuine step toward the market you described. Meet me closer to that midpoint and we have a deal.", "thoughts": "Seller cleverly used my own comps to argue ~$12,000, then anchored at $12,450 \u2014 above that logic. They've moved $250, so they're negotiating but slowly.", "reasoning": "Their own math points to ~$12,000, so $12,450 is inconsistent. I'll accept the ~$12,000 midpoint framing but push slightly below it, since minor scratches justify a small discount. Move to $11,650.", "fair_value_estimate": "Comparable sales at similar mileage (~77k) run around $11,970\u2013$12,074, and this car has minor scratches. Fair market value is about $11,900.", "fv_number": 11900.0}, {"n": 5, "speaker": "seller", "action": "hold", "number": 12450, "pct_fair": 100.95, "message": "I hear the midpoint pitch, but a midpoint is just arithmetic \u2014 it isn't what the car is worth. Here's why I'm holding at $12,450: your own comps ($11,971 at 86k, $12,074 at 77k) had a repainted hood and heavier mileage, and this car is cleaner condition at mid-band mileage, which belongs at the top of that range, not below it. Cosmetic scratches don't drag a car under comps that also had cosmetic issues. I'm staying at $12,450 for now \u2014 what specifically about this car's condition do you think justifies pricing it under those two comps rather than at or above them?", "thoughts": "The buyer is negotiating well \u2014 reciprocating my moves and using my own words against me \u2014 but that's rhetoric, not a ceiling. He's now at $11,650, inside the comp band, showing he has room to reach it and likely past. His \"midpoint\" pitch is an attempt to anchor me toward splitting the difference, which is arithmetic, not evidence.", "reasoning": "I conceded last turn ($12,700\u2192$12,450), so per the HOLD RULE this turn must be a hold at $12,450. I'll give a reason and put a question to him, and refuse the midpoint framing.", "fair_value_estimate": "Fair value ~$12,000, unchanged. The scratches are minor/cosmetic; comps in this band with equal-or-worse condition sold at $11,971\u201312,074.", "fv_number": 12000.0}, {"n": 6, "speaker": "buyer", "action": "propose", "number": 11950, "pct_fair": 96.89, "message": "A repainted hood actually signals prior collision or damage repair \u2014 arguably a worse history than honest cosmetic scratches, so I don't accept that this car sits above those comps. Realistically it belongs right in that $11,970\u2013$12,074 band, not at a premium. To keep this moving, I'll step up to $11,950, which is squarely at the market you keep citing. That's a fair number for this car's actual mileage and condition.", "thoughts": "Seller held firm at $12,450, refusing the midpoint. They're anchoring on condition but ignoring that a repainted hood is arguably worse than minor scratches \u2014 repainting suggests prior damage. They want top-of-band pricing.", "reasoning": "$12,450 is above fair value ($11,900) but below my reservation ($12,708). I have room but shouldn't rush. I'll push back on their condition logic and make a moderate move to $11,950 to keep momentum while staying well under my ceiling.", "fair_value_estimate": "Comparable sales at similar mileage (~77k) run around $11,970\u2013$12,074, and this car has minor scratches. Fair market value is about $11,900.", "fv_number": 11900.0}, {"n": 7, "speaker": "seller", "action": "propose", "number": 12300, "pct_fair": 99.73, "message": "Your repainted-hood point cuts the wrong way for you: a buyer who accepted a car with prior bodywork at $12,074 tells us the clean-history version \u2014 this one, with nothing but light cosmetic scratches \u2014 should command at least that, not less. So $11,950 is actually the floor of where this car belongs, not the ceiling. I'll take a genuine step and come to $12,300 \u2014 that reflects a clean-history car at mid-band mileage. Meet me in the low twelves and we close today; can you do $12,300?", "thoughts": "The buyer moved up even after I held firm \u2014 strong evidence he has more room than $11,950, likely into the low-$12,000s. His repainted-hood-as-damage argument is a decent rhetorical counter but doesn't establish a ceiling. He's now at fair value and framing it as the natural stopping point, which is exactly what I'd expect from someone with a bit more room.", "reasoning": "I held last turn, so I'm free to move this turn. He moved after my hold, proving room, so I'll concede a small, decelerating amount \u2014 $12,450\u2192$12,300 \u2014 staying above my raised estimate of $12,250. This buys reciprocal movement and tests whether he'll follow me into the low-$12,000s where the real deal likely lives.", "fair_value_estimate": "Fair value ~$12,000, unchanged. Buyer's $11,950 essentially concedes the fair-value case \u2014 it lands right in the comp band.", "fv_number": 12000.0}, {"n": 8, "speaker": "buyer", "action": "propose", "number": 12100, "pct_fair": 98.11, "message": "We're close enough to finish this. But \"clean-history\" overstates it \u2014 this car has actual scratches on it today, which a buyer sees and factors in, unlike a repaired hood that looks fine. That keeps it at the band, not above. I'll come up to $12,100, which is already at the top of the comparable range \u2014 accept that and we close today.", "thoughts": "Seller moved from $12,450 to $12,300 and wants to close today. They're framing this as a clean-history car, but it does have scratches. Gap is now $350.", "reasoning": "$12,300 is above my fair value but under reservation. We're closing in \u2014 gap is small. I'll split toward them slightly to $12,100, still just above the comp band, and signal we can close.", "fair_value_estimate": "Comparable sales at similar mileage (~77k) run around $11,970\u2013$12,074, and this car has minor scratches. Fair market value is about $11,900.", "fv_number": 11900.0}, {"n": 9, "speaker": "seller", "action": "hold", "number": 12300, "pct_fair": 99.73, "message": "We are genuinely close, and I'd like to finish today too. But the scratches are minor and cosmetic \u2014 a quick, cheap fix \u2014 and you're valuing them as if they materially change the car; the comps say they don't, given cars with repainted hoods and higher mileage cleared $12,074. That's why I'm holding at $12,300: it's a clean-history car at mid-band mileage, and $200 shouldn't stand between us. If I hold here, is there any reason you can't close at $12,300 right now?", "thoughts": "The buyer keeps climbing every round and is now at $12,100, just $200 below my $12,300 and above my fair-value estimate. His moves are shrinking, which hints he's nearing his ceiling, but that's soft evidence. The gap in dispute ($200) is now small relative to the risk of blowing up a deal that already beats my reservation handsomely.", "reasoning": "I conceded last turn ($12,450\u2192$12,300), so per the HOLD RULE this turn must be a hold at $12,300. I'll hold, justify it, and press him to close the small remaining gap at my number.", "fair_value_estimate": "Fair value ~$12,000, unchanged. Buyer's $12,100 is now slightly above my fair-value read.", "fv_number": 12000.0}, {"n": 10, "speaker": "buyer", "action": "propose", "number": 12200, "pct_fair": 98.92, "message": "$200 shouldn't stand between us \u2014 which is exactly why you can meet me in the middle. Let's split it: $12,200 and we sign today, right now. That's a fair close for both of us and I'm ready to commit on the spot.", "thoughts": "Seller held firm at $12,300, gap is now $200. They're motivated to close today and framing $200 as trivial. They're unlikely to drop much further.", "reasoning": "Gap is $200, and $12,300 is well under my $12,708 reservation. I'll make one final small move to $12,200 to try to capture the midpoint; if they hold, I can accept $12,300 as it's still below fair-value ceiling.", "fair_value_estimate": "Comparable sales at similar mileage (~77k) run around $11,970\u2013$12,074, and this car has minor scratches. Fair market value is about $11,900.", "fv_number": 11900.0}, {"n": 11, "speaker": "seller", "action": "hold", "number": 12300, "pct_fair": 99.73, "message": "I'm ready to sign today too \u2014 and at $100 apart, this is done the moment we agree. But splitting for its own sake isn't a reason to move; the car's value sits at the top of the comp band, and $12,300 reflects that for a clean-history example. Come the last $100 to $12,300 and I'll sign this instant \u2014 that's my number and it's a fair close. Deal?", "thoughts": "He moved after my hold \u2014 proof of more room \u2014 but only $100, and he's offering an immediate signed close at $12,200. The dollars in dispute are now trivial ($100) versus a deal that beats my reservation ($11,958) by $242 already. Risking a solid deal over $100 would be poor trading; but one more firm hold costs me almost nothing and may pull him the last $100.", "reasoning": "I held last turn, so I'm free to move \u2014 but the smart play here isn't to concede, it's to hold once more at $12,300. He just proved room by moving after my hold, the gap is only $100, and a final firm hold with a close offer tests whether he'll take the last step. If he holds flat next turn, I accept $12,200 \u2014 it's an excellent outcome well above fair value and my reservation.", "fair_value_estimate": "Fair value ~$12,000, unchanged. $12,200 is $200 above my fair-value read \u2014 a strong result.", "fv_number": 12000.0}, {"n": 12, "speaker": "buyer", "action": "accept", "number": 12300, "pct_fair": 99.73, "message": "Fair enough \u2014 $100 isn't worth holding up a deal we both want. Let's close at $12,300. Deal.", "thoughts": "Seller is firm at $12,300 and we're only $100 apart. They've signaled this is their number and will sign instantly.", "reasoning": "$12,300 is $408 below my reservation and only $100 above my last offer. Not worth risking the deal over $100. Accept.", "fair_value_estimate": "Comparable sales at similar mileage (~77k) run around $11,970\u2013$12,074, and this car has minor scratches. Fair market value is about $11,900.", "fv_number": 11900.0}]}, {"id": 1, "filename": "20260808_143822_b1bbf8.json", "outcome": "deal", "final_price": 12850, "accepted_by": "seller", "num_turns": 13, "fair_value": 12907, "seller_reservation": 12532, "buyer_reservation": 13282, "asking_price": null, "seller_share": 0.424, "car": {"model": "Honda Civic EX", "year": 2018, "mileage": 81030, "color": "silver", "damage": "windshield chip repaired"}, "fv_summary": {"buyer": {"first": 12100.0, "changed": false, "diff": -807.0, "pct_off": -6.252421166808708, "count": 7}, "seller": {"first": 12700.0, "changed": false, "diff": -207.0, "pct_off": -1.603780894088479, "count": 7}}, "turns": [{"n": 0, "speaker": "buyer", "action": "propose", "number": 11400, "pct_fair": 88.32, "message": "Thanks for reaching out. I've been looking at 2018 Civic EX models and comparable cars with similar mileage and a repaired windshield chip have sold in the $11,900\u2013$12,100 range recently. Given this one has 81k miles and the windshield history, I'd like to start at $11,400. What's your asking price?", "thoughts": "Seller hasn't named a price yet. Car has been on market 16 days, suggesting some flexibility.", "reasoning": "Open low but credibly, anchoring near the lower comps to leave room to climb toward my ~$12,100 target while staying well under my $13,282 reservation.", "fair_value_estimate": "Comparable cars at ~80k miles with windshield chip repairs sold for $11,961\u2013$12,122. This car at 81,030 miles fits that range; fair value is about $12,100.", "fv_number": 12100.0}, {"n": 1, "speaker": "seller", "action": "propose", "number": 13600, "pct_fair": 105.37, "message": "Appreciate the interest, but the comps you're citing are the oldest and highest-mileage sales in the set \u2014 not where this market actually is right now. The most recent comparable sales tell a different story: a chip-repaired Civic EX with 67k miles sold for $13,317 just over a week ago, and even clean cars at 83\u201385k miles went for $12,587 and $12,629 within the last month. A repaired windshield chip is a non-issue \u2014 it's a documented, professional repair, not damage. Given the recent sales, my asking price is $13,600. What's actually driving your $11,400 figure?", "thoughts": "The buyer is anchoring low with selectively chosen comps \u2014 the two cheapest, stalest sales. That's a negotiating frame, not evidence of the market or of their limit. Their $11,400 open is below even their own quoted range, which tells me they expect to move up.", "reasoning": "I did not concede last turn (this is my opening). I'm anchoring high and reframing their comps. I open at $13,600, justified by the strongest recent sales, staying well above my untested estimate.", "fair_value_estimate": "Fair value ~$12,700. The best-comparable recent sales cluster higher than the buyer claims: a 67k-mile chip-repaired car at $13,317 (8 days ago), a clean 83k-mile car at $12,587 (7 days), 85k clean at $12,629. My car at 81k with a repaired chip sits solidly in the mid-$12k range once you adjust for mileage. The buyer's cited $11,900\u2013$12,100 cherry-picks the oldest, highest-mileage sales.", "fv_number": 12700.0}, {"n": 2, "speaker": "buyer", "action": "propose", "number": 11900, "pct_fair": 92.2, "message": "I hear you, but mileage is the biggest driver here and the $13,317 car had 67k miles\u201414,000 fewer than this one. The truly comparable sale is the chip-repaired Civic EX at 81,527 miles that went for $11,961, and another at 78,400 for $12,122. Those are the same age, same mileage band, same windshield history as your car. I'll come up to $11,900, which is right in line with what these actually sell for.", "thoughts": "Seller is cherry-picking recent, lower-mileage comps to justify a high price. The $13,317 comp had 67k miles\u2014far fewer than this car's 81k. They're negotiating hard but reasonably.", "reasoning": "Push back on the mileage difference and use the most relevant comps: 81k-82k mile chip-repaired cars sold at $11,961. Move up modestly to $11,900 to signal good faith while staying well below fair value.", "fair_value_estimate": "Comparable cars at ~80k miles with windshield chip repairs sold for $11,961\u2013$12,122. This car at 81,030 miles fits that range; fair value is about $12,100.", "fv_number": 12100.0}, {"n": 3, "speaker": "seller", "action": "propose", "number": 13200, "pct_fair": 102.27, "message": "Fair point on mileage \u2014 but you're anchoring on sales that are 66 and 84 days old, and this market has firmed up since. Look at the timing: the recent sales (7\u20138 days out) are the ones landing in the mid-$12s and up, while your two comps closed two to three months ago when prices were softer. Mileage matters, but so does recency, and the recent data doesn't support $11,900. I'll come down to $13,200. If it's not mileage-adjusted recent comps driving your number, what is?", "thoughts": "The buyer makes a fair mileage point but leans exclusively on stale, low sales to build a ceiling. The $500 bump is a signal they have room and expect to keep climbing \u2014 it's a tactic, not a limit. Their \"same mileage band\" comps conveniently ignore that they sold months ago in a softer market.", "reasoning": "I did not concede last turn (I opened at $13,600 and have not lowered). I'll make a modest concession to keep them engaged and test for reciprocal movement, staying well above my estimate. Moving to $13,200 buys me continued negotiation and a chance to learn how much further they'll climb.", "fair_value_estimate": "Fair value ~$12,700. Unchanged. The buyer cites the two lowest mileage-matched chip-repaired sales, but both are stale (66 and 84 days) \u2014 older, softer market. Recent activity (7\u20138 days) runs higher.", "fv_number": 12700.0}, {"n": 4, "speaker": "buyer", "action": "propose", "number": 12200, "pct_fair": 94.52, "message": "Recency is fair, but look closer: the recent mid-$12s sales were either clean cars ($12,587 and $12,629, no damage) or much lower mileage. For this exact profile\u201481k miles with a repaired chip\u2014there's no recent comp above the low $12s. Blending mileage, condition, and recency, I can move to $12,200. That's a fair, market-supported number for this specific car.", "thoughts": "Seller dropped $400 to $13,200 and is leaning on recency. Their recent-comp argument has some merit but the mid-$12s recent sales were mostly clean cars or lower mileage. Room to close in the low-to-mid $12s.", "reasoning": "Concede recency partly, but note the recent mid-$12s comps were clean or lower-mileage. Bridge toward a mid-$12k number. Move to $12,200 to keep momentum while staying under fair value.", "fair_value_estimate": "Comparable cars at ~80k miles with windshield chip repairs sold for $11,961\u2013$12,122. This car at 81,030 miles fits that range; fair value is about $12,100.", "fv_number": 12100.0}, {"n": 5, "speaker": "seller", "action": "hold", "number": 13200, "pct_fair": 102.27, "message": "Here's the thing: you just anchored on clean recent sales at $12,587 and $12,629 \u2014 and a professionally documented windshield chip repair is a minor line item against those, not a $400\u2013$600 haircut. This car is inspection-ready with clean history, and I've got other interest, so I'm not going to chase your number down. I'm holding at $13,200. Tell me specifically: what would it take on your end to get to $13,200 \u2014 is it the number itself, or something about the car you want addressed?", "thoughts": "The buyer keeps climbing in shrinking steps ($500, then $300), which reads as an approach tactic, not a ceiling. They've now implicitly accepted that recent clean comps are near $12,600 \u2014 which undercuts their own low anchor. Their firmness is performance; they've moved every single turn.", "reasoning": "I did not concede last turn? I did \u2014 I moved to $13,200. Therefore this turn must be a HOLD at $13,200. I'll hold, give my reason, and put a question to them to force them to bid against themselves.", "fair_value_estimate": "Fair value ~$12,700. Unchanged. The buyer's own framing now concedes clean recent cars at 81\u201385k sold for $12,587\u2013$12,629; a well-documented chip repair is a minor deduction from that, not a $600+ discount.", "fv_number": 12700.0}, {"n": 6, "speaker": "buyer", "action": "propose", "number": 12450, "pct_fair": 96.46, "message": "The chip repair is a modest factor, agreed\u2014but the clean recent comps also had lower or comparable mileage without any damage history, so they aren't a straight one-to-one with this car either. I'm not trying to chase you down; I'm trying to land on what this specific car realistically sells for, which is the low-to-mid $12s. I'll move to $12,450, which is a genuine stretch above every comparable chip-repaired sale in your data. That's a strong, clean offer\u2014let's close here.", "thoughts": "Seller is holding firm at $13,200 and claiming other interest\u2014likely partly bluff. That number is near my reservation ($13,282), so I have little upside there but don't want to overpay above fair value.", "reasoning": "$13,200 is $1,100 above my fair value estimate and only $82 under my reservation\u2014bad deal. Hold pressure but nudge up slightly to $12,450 to show movement and keep them engaged toward a mid-$12k close.", "fair_value_estimate": "Comparable cars at ~80k miles with windshield chip repairs sold for $11,961\u2013$12,122. This car at 81,030 miles fits that range; fair value is about $12,100.", "fv_number": 12100.0}, {"n": 7, "speaker": "seller", "action": "propose", "number": 13000, "pct_fair": 100.72, "message": "That's a real move and I appreciate it \u2014 but you just came up after I held, which tells me we're closer than your \"close here\" suggests. The clean recent comps you cited sit at $12,587 and $12,629 with mileage in this same band, so $12,450 is actually below the current market for a car this well-documented, chip repair included. I'll meet the effort and come down to $13,000, which is genuinely tight against those recent sales. If $13,000 isn't it, tell me the exact number you'd shake on today and why it stops there.", "thoughts": "They moved up after my hold \u2014 the single most informative event \u2014 which proves they were not tapped out at $12,200. The \"let's close here\" and \"genuine stretch\" language is closing pressure, a move, not a limit. Steps are shrinking ($300, $250) but that's tactical deceleration, not evidence of a wall.", "reasoning": "I held last turn, so I'm free to concede now. Their move after my hold justifies a small, decelerating concession that keeps me well above my estimate and tests whether there's still room. I'll drop to $13,000 \u2014 a $200 move that signals I'm firming up while staying at my estimate, buying a read on whether they'll climb again.", "fair_value_estimate": "Fair value ~$12,700. Unchanged. Buyer's $12,450 is now essentially at fair value, confirming my read of the market.", "fv_number": 12700.0}, {"n": 8, "speaker": "buyer", "action": "propose", "number": 12650, "pct_fair": 98.01, "message": "Okay, let me be straight about where this stops. The recent clean comps you keep citing\u2014$12,587 and $12,629\u2014are exactly where a well-documented but chip-repaired car with this mileage should land, not above them. So I'll go to $12,650, which actually meets those clean-car prices despite the windshield history. That's my real number\u2014it's fair, it's market-backed, and I'm ready to sign today at $12,650.", "thoughts": "Seller dropped $200 to $13,000\u2014movement, but still $900 above my fair value. They're asking for my walk number, signaling they want to close.", "reasoning": "Give a firm-sounding \"final\" number in the mid-$12s. Move to $12,650, framed as matching the clean recent comps while still crediting the chip. This anchors a realistic close point without approaching my reservation.", "fair_value_estimate": "Comparable cars at ~80k miles with windshield chip repairs sold for $11,961\u2013$12,122. This car at 81,030 miles fits that range; fair value is about $12,100.", "fv_number": 12100.0}, {"n": 9, "speaker": "seller", "action": "hold", "number": 13000, "pct_fair": 100.72, "message": "$12,650 is a solid offer and we're genuinely close now. But you're framing $12,650 as a ceiling because it matches clean-car comps \u2014 and this car is clean-history too, with the chip repair fully documented, so there's a real case it belongs a notch above those. I'm holding at $13,000. That's only $350 between us on a car you're ready to sign for today \u2014 is $13,000 actually a dealbreaker for you, or are we haggling over a number you can live with?", "thoughts": "They've climbed to fair value in decelerating steps and are signaling a stop with \"my real number.\" That's still partly tactical, but reaching genuine fair value with shrinking increments is weak evidence the top is near. The dollars still in dispute ($350 to my $13,000) are getting small relative to deal risk.", "reasoning": "I did not concede last turn? I did \u2014 I dropped to $13,000. So this turn must be a HOLD at $13,000. I'll hold, note they haven't refused-and-held my number, and press for whether $13,000 is truly a wall for them.", "fair_value_estimate": "Fair value ~$12,700. Unchanged. Buyer's $12,650 is right at fair value, matching the clean recent comps.", "fv_number": 12700.0}, {"n": 10, "speaker": "buyer", "action": "propose", "number": 12800, "pct_fair": 99.17, "message": "You're right that we're haggling over a livable number now, so let's finish it. I'll split the remaining gap and come to $12,800\u2014that's above every chip-repaired comp in your data and squarely at the clean-car level. That's the top of what I'll do; it's a fair, well-documented price for both of us. Say yes and I'll sign today at $12,800.", "thoughts": "Seller held at $13,000, splitting-the-difference language. The $350 gap is small but $13,000 is still well above my fair value; they're anchoring me to close the gap.", "reasoning": "Split modestly toward them to close\u2014move to $12,800. Frame it as my true final. Stays $200 below their number and $482 under reservation, a good outcome given momentum.", "fair_value_estimate": "Comparable cars at ~80k miles with windshield chip repairs sold for $11,961\u2013$12,122. This car at 81,030 miles fits that range; fair value is about $12,100.", "fv_number": 12100.0}, {"n": 11, "speaker": "seller", "action": "propose", "number": 12900, "pct_fair": 99.95, "message": "We're $200 apart and I want to close this too. You've come up nicely, so let me meet you almost all the way: $12,900 and it's done today. That's a fair split of the last sliver on a car that's clean-history and fully documented \u2014 say yes and we sign.", "thoughts": "They moved after my hold again \u2014 genuine evidence of remaining room \u2014 but the increments are shrinking sharply and they're now above fair value. The dispute is $200 on a deal well above my reservation. Pushing further risks a deal that beats my alternative by a wide margin over marginal dollars.", "reasoning": "I held last turn, so I may concede now. $12,800 is well above my reservation and above fair value. The remaining gap to my $13,000 is only $200; they've moved after my hold, so there's likely a sliver more, but risking a strong deal over $200 is a poor trade. I'll make one small decelerating move to $12,900 \u2014 above my estimate \u2014 to capture a bit more while keeping the deal alive, rather than accept flat.", "fair_value_estimate": "Fair value ~$12,700. Unchanged. Their $12,800 is now above fair value.", "fv_number": 12700.0}, {"n": 12, "speaker": "buyer", "action": "propose", "number": 12850, "pct_fair": 99.56, "message": "We're basically there. Let's not let $100 stop us\u2014meet me in the exact middle at $12,850 and it's done right now, signed today. That's a genuinely fair close for both of us on a well-documented car.", "thoughts": "Seller came to $12,900, just $100 above my last. They're clearly ready to close. This is $382 under my reservation and reasonable given the momentum.", "reasoning": "$100 gap. Try one last nudge to meet at $12,850; if they won't, $12,900 is still a solid deal below reservation. Make a final split offer.", "fair_value_estimate": "Comparable cars at ~80k miles with windshield chip repairs sold for $11,961\u2013$12,122. This car at 81,030 miles fits that range; fair value is about $12,100.", "fv_number": 12100.0}, {"n": 13, "speaker": "seller", "action": "accept", "number": 12850, "pct_fair": 99.56, "message": "Done. $12,850 it is \u2014 that's a fair close on a clean, well-documented car. Let's sign today.", "thoughts": "They've closed to within $50 with a token move \u2014 this is genuinely the top of their range or a hair below. There is no meaningful money left to extract, and $12,850 is $318 above fair value and far above my reservation.", "reasoning": "I did not concede last turn? I did \u2014 I dropped to $12,900. So this turn must be a HOLD or an accept/walk. The rules permit accept at any time. Risking a strong deal over $50 is a clearly bad trade, and their $12,850 is well above fair value and my reservation. I accept.", "fair_value_estimate": "Fair value ~$12,700. Unchanged. $12,850 is above fair value.", "fv_number": 12700.0}]}, {"id": 2, "filename": "20260808_144011_233dcd.json", "outcome": "deal", "final_price": 12600, "accepted_by": "seller", "num_turns": 11, "fair_value": 12479, "seller_reservation": 12104, "buyer_reservation": 12854, "asking_price": null, "seller_share": 0.6613333333333333, "car": {"model": "Honda Civic EX", "year": 2018, "mileage": 75025, "color": "black", "damage": "windshield chip repaired"}, "fv_summary": {"buyer": {"first": 12400.0, "changed": false, "diff": -79.0, "pct_off": -0.6330635467585544, "count": 6}, "seller": {"first": 12600.0, "changed": false, "diff": 121.0, "pct_off": 0.9696289766808238, "count": 6}}, "turns": [{"n": 0, "speaker": "buyer", "action": "propose", "number": 11300, "pct_fair": 90.55, "message": "Thanks for the details. I've been comparing recent sales of 2018 Civic EX models with similar mileage \u2014 most in the mid-$12k range, and this one has a repaired windshield chip plus 75k miles. Given it's been listed for a month, I'd like to make a fair offer. I can do $11,300.", "thoughts": "Seller just opened with no number, waiting to see their ask. Car has been on market 31 days, suggesting some motivation.", "reasoning": "I'll anchor low to leave room, well below my $12,854 reservation. Start around $11,300.", "fair_value_estimate": "Comparables at similar mileage (~75k) with minor issues sold around $12,000\u2013$12,600. With a repaired windshield chip (minor), I estimate fair value around $12,400.", "fv_number": 12400.0}, {"n": 1, "speaker": "seller", "action": "propose", "number": 13000, "pct_fair": 104.18, "message": "I appreciate the offer, but $11,300 is below every comparable 2018 Civic EX sale I have \u2014 including clean cars at this exact mileage that went for $12,600+ ($12,619 at 74.5k, $12,602 at 75.3k). A repaired windshield chip is cosmetic and doesn't move the needle; buyers pay for it because it's already fixed. Days on market reflects my patience, not urgency. Based on the comps, this car is realistically a $13,000 car, so that's where I'm starting \u2014 what specifically are you comparing against to land at $11,300?", "thoughts": "The buyer is anchoring low and dressing it up as \"fair,\" leaning on the windshield chip and days-on-market to justify a price under every comp. That's a tactic, not evidence of their ceiling. Their real limit is unknown and almost certainly well north of $11,300.", "reasoning": "I did not concede last turn (this is my open), so I set an aggressive, justified anchor above my estimate. $11,300 is below every comparable sale and I won't negotiate inside that frame \u2014 I counter-anchor high and defend with the clean 75k comps.", "fair_value_estimate": "Fair value ~$12,600. Clean comps at similar mileage (74k\u201377k): $12,619 (74.5k, clean) and $12,602 (75.3k, minor wheel rash). A repaired windshield chip is cosmetically negligible. So a clean-ish 75k Civic EX sits right around $12,600.", "fv_number": 12600.0}, {"n": 2, "speaker": "buyer", "action": "propose", "number": 11700, "pct_fair": 93.76, "message": "Fair questions. I'm looking at the full spread \u2014 not just the clean top-end cars. Comps at this mileage with any imperfection ran $12,000\u2013$12,600 ($12,034 at 78k, $12,256 at 85k, $12,602 with wheel rash). Repaired or not, a windshield chip is a mark against a \"clean\" designation, so this sits mid-pack, not at the top. I can come up to $11,700.", "thoughts": "Seller is well-informed and cherry-picking the higher clean-car comps. $13,000 is above realistic value. They're firm but negotiating rationally.", "reasoning": "I'll push back with the lower/mid comps and move up modestly to $11,700 to keep progress while staying well under reservation.", "fair_value_estimate": "Comparables at similar mileage (~75k) with minor issues sold around $12,000\u2013$12,600. With a repaired windshield chip (minor), I estimate fair value around $12,400.", "fv_number": 12400.0}, {"n": 3, "speaker": "seller", "action": "propose", "number": 12750, "pct_fair": 102.17, "message": "The imperfection comps you cite carry real defects \u2014 a dent, a repaint, curb rash on the wheels, or 85k miles. A professionally repaired windshield chip is not in that category; it's invisible and structurally sound, which is exactly why the clean 75k cars at $12,600+ are the right comparison. I'll come down to $12,750 to reflect that this isn't showroom-perfect, but I'm not going to price it as a dented or repainted car. That's a real move on my side \u2014 can you meet me meaningfully above $11,700?", "thoughts": "The buyer is cherry-picking the low/imperfect comps and reclassifying a repaired chip as a real defect to justify a mid-pack price. Their $400 bump shows willingness to climb; it's evidence of room, not of a ceiling. Their comp framing is a tactic, not a fact about the car's condition.", "reasoning": "I did not concede last turn (I opened), so I may move now. I make a small, deliberate concession off $13,000 to buy reciprocal movement and keep the process going, while staying well above my estimate and correcting their frame.", "fair_value_estimate": "Fair value ~$12,600. Clean comps at 74k\u201377k went $12,600+; a repaired chip is cosmetically negligible.", "fv_number": 12600.0}, {"n": 4, "speaker": "buyer", "action": "propose", "number": 12100, "pct_fair": 96.96, "message": "I appreciate you moving off $13k \u2014 that's a genuine step. But a repaired chip still isn't a truly clean car in a buyer's eyes; the record shows a repair, and that shows up at resale. The realistic center of gravity here is right around $12,000\u2013$12,300, not $12,600+. I'll make a real move too: $12,100.", "thoughts": "Seller made a real move from $13,000 to $12,750. They value the repaired chip as near-clean. Still, $12,750 is above my fair value estimate and near my ceiling.", "reasoning": "I'll make a meaningful jump to $12,100 \u2014 right around fair value \u2014 showing good faith while leaving room below my $12,854 reservation.", "fair_value_estimate": "Comparables at similar mileage (~75k) with minor issues sold around $12,000\u2013$12,600. With a repaired windshield chip (minor), I estimate fair value around $12,400.", "fv_number": 12400.0}, {"n": 5, "speaker": "seller", "action": "hold", "number": 12750, "pct_fair": 102.17, "message": "We've both made real moves, so let me be straight about why I'm staying at $12,750. The clean 75k comps at $12,600+ are the right anchor, and your $12,000\u2013$12,300 \"center\" leans on cars with actual defects \u2014 dents, repaints, curb rash \u2014 not a cosmetic repair that's invisible on the road. A repair note doesn't cost $600; the market shows that. I'm holding at $12,750 \u2014 what specifically would you need to see to close this today at that level?", "thoughts": "The buyer is climbing steadily ($400 each move) while insisting the \"center of gravity\" is $12,000\u2013$12,300 \u2014 but their own behavior contradicts that, since they keep raising. Their words about resale records are a frame, not evidence of their ceiling. A buyer this willing to move has more room to give.", "reasoning": "I conceded last turn ($13,000 \u2192 $12,750), so per the HOLD RULE this turn must be a HOLD at $12,750. I hold, defend the clean-comp frame, and put a question to them to force them to bid against themselves.", "fair_value_estimate": "Fair value ~$12,600. Clean comps at 74k\u201377k went $12,600+; a repaired chip is cosmetically negligible.", "fv_number": 12600.0}, {"n": 6, "speaker": "buyer", "action": "propose", "number": 12400, "pct_fair": 99.37, "message": "Here's what I need: a price that reflects fair market, and $12,400 does exactly that \u2014 it's above every defect comp and right at the level a well-kept 75k car with a repair note actually trades. I've moved from $11,300 to $12,400; that's substantial. $12,750 sits at the very top of the range and ignores that a repair record does show up, even if small. Meet me at $12,400 and we close today.", "thoughts": "Seller is holding firm at $12,750, close to my ceiling. They're anchored on clean comps. I still have room but want to avoid paying near my reservation.", "reasoning": "Seller held, so I'll make a smaller move to $12,400 \u2014 my fair value figure \u2014 and signal it's near my top to test for a meet in the middle.", "fair_value_estimate": "Comparables at similar mileage (~75k) with minor issues sold around $12,000\u2013$12,600. With a repaired windshield chip (minor), I estimate fair value around $12,400.", "fv_number": 12400.0}, {"n": 7, "speaker": "seller", "action": "hold", "number": 12750, "pct_fair": 102.17, "message": "You've negotiated well and we're genuinely close now \u2014 $350 apart. But you just moved up again, which tells me $12,400 isn't really your ceiling, and $12,750 is the right number for a well-kept 75k car whose only mark is an invisible, professionally repaired chip. I'm not going to price a $600 repair penalty into a car the market doesn't penalize that way. I'll close today at $12,750 \u2014 given how close we are, is there a reason $12,750 doesn't work for you when the clean comps sit right there?", "thoughts": "The buyer moved up after my hold \u2014 strong evidence they can go higher than $12,400, and their \"close today\" is a closing tactic to freeze me near their number. Their $300 move plus urgency to close signals a near-final push, but words about resale records are still just framing. They're very close to $12,750; the gap is small.", "reasoning": "I held last turn, so I'm permitted to move now \u2014 but my estimate (~$12,700) sits above their $12,400, and they climbed after my hold, so I won't drop to their number. The gap between $12,750 and $12,400 is only $350; rather than concede to $12,400 (below my estimate \u2014 forbidden), I hold firm at $12,750 to extract the last movement, since they've shown they keep climbing when I hold.", "fair_value_estimate": "Fair value ~$12,600. Clean comps at 74k\u201377k went $12,600+; a repaired chip is cosmetically negligible.", "fv_number": 12600.0}, {"n": 8, "speaker": "buyer", "action": "propose", "number": 12550, "pct_fair": 100.57, "message": "You're right that we're close, so let me end the back-and-forth. Even the best clean comps ($12,619, $12,602) sit right around $12,600, and this car does carry a repair note \u2014 so paying $12,750, above those clean cars, doesn't add up. I'll meet you nearly all the way: $12,550, and I'll close today. That's a fair, defensible number for both of us.", "thoughts": "Seller is firmly anchored at $12,750 and reading my moves. They won't go to $12,400 easily. $12,750 is under my reservation but I want to squeeze a bit more.", "reasoning": "Split the difference partway \u2014 offer $12,550 as a \"final\" to land below both $12,750 and my reservation while giving the seller a reason to accept.", "fair_value_estimate": "Comparables at similar mileage (~75k) with minor issues sold around $12,000\u2013$12,600. With a repaired windshield chip (minor), I estimate fair value around $12,400.", "fv_number": 12400.0}, {"n": 9, "speaker": "seller", "action": "propose", "number": 12650, "pct_fair": 101.37, "message": "This is a strong, defensible number and we're genuinely at the finish line. You've come up to $12,550 \u2014 above the clean comps \u2014 which tells me the value is there; let's not lose a done deal over a sliver. I'll come down to $12,650 and we close right now. Split the last stretch with me and it's done today \u2014 deal at $12,650?", "thoughts": "The buyer keeps climbing after each hold \u2014 now to $12,550, above the clean comps \u2014 with a shrinking step ($150), signaling they're near their top. The gap is down to $200. Risking a genuinely good deal (well above my $12,104 reservation, above fair value) over $200 would be a bad trade.", "reasoning": "I held last turn, so I may move now. The gap is $200; $12,550 is above fair value and far above my reservation. Rather than accept flat, I make one small split-the-remaining move to $12,650 to test for the last dollars \u2014 this stays at/above my estimate and buys either a close or a final read. If they hold at $12,550 next, I'll take it.", "fair_value_estimate": "Fair value ~$12,600. Clean comps at 74k\u201377k went $12,600+; a repaired chip is cosmetically negligible.", "fv_number": 12600.0}, {"n": 10, "speaker": "buyer", "action": "propose", "number": 12600, "pct_fair": 100.97, "message": "We're basically there. Let me put it right at the clean-comp ceiling: $12,600. That's the exact level the best 75k cars traded at, it's fair to you, and I'll sign today. Meet me at $12,600 and it's done.", "thoughts": "Seller moved to $12,650, only $100 above my offer. This is a fair close well under my $12,854 reservation. Very little left to gain by holding.", "reasoning": "Try one last nudge to $12,600 \u2014 the clean-comp ceiling \u2014 but $12,650 is acceptable if they won't budge. I'll propose $12,600 as final.", "fair_value_estimate": "Comparables at similar mileage (~75k) with minor issues sold around $12,000\u2013$12,600. With a repaired windshield chip (minor), I estimate fair value around $12,400.", "fv_number": 12400.0}, {"n": 11, "speaker": "seller", "action": "accept", "number": 12600, "pct_fair": 100.97, "message": "Done \u2014 $12,600 it is. You negotiated hard and landed it right at the clean-comp mark; that's a fair close for both of us. Let's sign today.", "thoughts": "The buyer's step collapsed to $50 and landed exactly at the clean-comp ceiling \u2014 genuine signs they're at or very near their top. The $50 gap is trivial relative to a deal that sits at full fair value and ~$500 above my reservation. Pushing further risks the deal for a rounding error.", "reasoning": "I conceded last turn ($12,750 \u2192 $12,650). Normally the HOLD RULE binds \u2014 but accepting a standing offer is an explicit permitted exception. $12,600 is at full fair value, $496 above my reservation, and only $50 below my last offer. This clears the closing test: value claimed, tiny remaining gap. I accept.", "fair_value_estimate": "Fair value ~$12,600. Clean comps at 74k\u201377k went $12,600+; a repaired chip is cosmetically negligible.", "fv_number": 12600.0}]}, {"id": 3, "filename": "20260808_144144_e071c0.json", "outcome": "deal", "final_price": 13700, "accepted_by": "buyer", "num_turns": 10, "fair_value": 13648, "seller_reservation": 13273, "buyer_reservation": 14023, "asking_price": null, "seller_share": 0.5693333333333334, "car": {"model": "Honda Civic EX", "year": 2018, "mileage": 72245, "color": "white", "damage": "windshield chip repaired"}, "fv_summary": {"buyer": {"first": 13400.0, "changed": false, "diff": -248.0, "pct_off": -1.817116060961313, "count": 6}, "seller": {"first": 13400.0, "changed": false, "diff": -248.0, "pct_off": -1.817116060961313, "count": 5}}, "turns": [{"n": 0, "speaker": "buyer", "action": "propose", "number": 12500, "pct_fair": 91.59, "message": "Hi, thanks for reaching out. I'm interested in the 2018 Civic EX. Given the 72k miles and the repaired windshield chip, and looking at comparable sales, I'd like to start at $12,500. Let me know what you're thinking.", "thoughts": "Seller has opened with just a greeting, no number yet. They've had it 35 days, which suggests some pressure to sell.", "reasoning": "I'll open low but credibly, anchoring below fair value to leave room. Start around $12,500.", "fair_value_estimate": "Comparable sales cluster around $13,200\u2013$13,900 for similar mileage. At 72,245 miles with only a repaired windshield chip, this car is worth about $13,400.", "fv_number": 13400.0}, {"n": 1, "speaker": "seller", "action": "propose", "number": 14300, "pct_fair": 104.78, "message": "Thanks for the interest \u2014 I appreciate a serious buyer. But $12,500 is below the market for this car. The two closest comps by mileage sold at $13,523 (73,317 mi) and $13,233 (73,563 mi), and this Civic is right in that band at 72k. The windshield chip was professionally repaired, so it's a non-issue cosmetically and structurally. Cleaner, lower-mileage EXs have been going for $13,900\u2013$14,400. Based on the comps I'm at $14,300 \u2014 where would you like to go from there?", "thoughts": "The buyer opened with a low anchor and cited mileage plus the windshield to justify it. That's a standard opening move, not evidence of their ceiling. The $12,500 figure is below even the weakest relevant comps, so it's easy to dismiss on the merits.", "reasoning": "I did not concede last turn (this is my open). I'm setting an aggressive, comp-justified anchor well above my estimate to reframe the range. $12,500 is below every comparable-mileage sale, so I counter high and defend with the two closest comps.", "fair_value_estimate": "Around $13,500. The two closest comps by mileage (73,317 mi at $13,523; 73,563 mi at $13,233) bracket this car at ~72k miles. A repaired windshield chip is cosmetically resolved and shouldn't dent value materially. Fair value sits ~$13,400\u2013$13,600.", "fv_number": 13400.0}, {"n": 2, "speaker": "buyer", "action": "propose", "number": 12900, "pct_fair": 94.52, "message": "Appreciate the detail. But your own two closest comps by mileage came in at $13,233 and $13,523 \u2014 and $14,300 is well above that band. The lower-mileage sales you mention had 58k\u201366k miles, not 72k, so they aren't apples-to-apples. I can come up to $12,900.", "thoughts": "Seller is well-informed and cites comps accurately, but $14,300 is above the two closest matches. They're anchoring high to leave room.", "reasoning": "Their own cited comps ($13,523 and $13,233) support a number near $13,300. I'll move up modestly to $12,900 and lean on their own comps.", "fair_value_estimate": "Comparable sales cluster around $13,200\u2013$13,900 for similar mileage. At 72,245 miles with only a repaired windshield chip, this car is worth about $13,400.", "fv_number": 13400.0}, {"n": 3, "speaker": "seller", "action": "propose", "number": 13900, "pct_fair": 101.85, "message": "Fair points on the lower-mileage comps \u2014 I'll set those aside. But even on the two closest comps you cited, this car belongs at the top of that band, not below it: both of those had curb rash or a rear dent, and this one is clean with a professionally repaired chip. That condition premium is real. I'll come down to $13,900 to reflect the mileage match, but I can't go into the low-$13s for a cleaner car than the comps. What's actually driving your $12,900 \u2014 is it budget, or how you're valuing the mileage?", "thoughts": "The buyer is arguing the frame well \u2014 correctly noting the lower-mileage comps aren't apples-to-apples and pinning me to my own closest comps. That's a smart tactical argument, not evidence of their ceiling. Their $400 move up suggests real room remaining.", "reasoning": "I did not concede last turn, so I'm free to move or hold. I'll make a small, deliberate concession off my anchor to keep momentum and reward their engagement \u2014 but land well above my estimate so I stay high and force them to keep bidding. This buys reciprocal movement and tests their range.", "fair_value_estimate": "Around $13,500. Closest-mileage comps ($13,523 at 73,317 mi; $13,233 at 73,563 mi) bracket this car. Repaired windshield chip is cosmetically resolved. Fair value ~$13,400\u2013$13,600.", "fv_number": 13400.0}, {"n": 4, "speaker": "buyer", "action": "propose", "number": 13200, "pct_fair": 96.72, "message": "Honest answer: it's how I'm valuing the mileage and the fact that a repaired windshield chip is still a disclosed repair, which softens the \"clean\" premium. The closest comps sat at $13,233\u2013$13,523, so a fair landing spot is in that range, not $13,900. I'll come up to $13,200 \u2014 that's a real move toward you.", "thoughts": "Seller made a real concession from $14,300 to $13,900 and is negotiating reasonably. They're framing condition as a premium, which has some merit but is overstated.", "reasoning": "Fair value is ~$13,400. They dropped $400; I'll move up meaningfully to $13,200 to keep momentum and signal I'm serious but disciplined.", "fair_value_estimate": "Comparable sales cluster around $13,200\u2013$13,900 for similar mileage. At 72,245 miles with only a repaired windshield chip, this car is worth about $13,400.", "fv_number": 13400.0}, {"n": 5, "speaker": "seller", "action": "hold", "number": 13900, "pct_fair": 101.85, "message": "$13,200 is a real move and I respect it \u2014 but I'm going to hold at $13,900 for now. Here's why: you're anchoring on the bottom of the closest-comp band, but those comps had curb rash and dents; this car is clean with a repaired chip that's fully documented. A disclosed, professionally completed repair doesn't drop a car below comps that had unrepaired cosmetic damage \u2014 if anything it belongs at the top of that band, near $13,523, or above it for condition. What number would actually let you close today rather than keep negotiating?", "thoughts": "The buyer is climbing steadily ($12,500 \u2192 $12,900 \u2192 $13,200) and is now anchoring on the top of the closest-comp band, which means they've effectively conceded that ~$13,500 is defensible. Their \"disclosed repair softens the premium\" line is a value argument, not a ceiling. Their consistent upward movement is genuine evidence of room.", "reasoning": "I did not concede last turn (I moved from 14,300 to 13,900 \u2014 that was last turn). Wait: I moved last turn, so per the HOLD RULE this turn must be a HOLD at 13,900. I'll hold, defend the number, and put a question to them to extract more.", "fair_value_estimate": "Around $13,500. Closest-mileage comps ($13,523 at 73,317 mi; $13,233 at 73,563 mi) bracket this car. Repaired windshield chip is cosmetically resolved. Fair value ~$13,400\u2013$13,600.", "fv_number": 13400.0}, {"n": 6, "speaker": "buyer", "action": "propose", "number": 13500, "pct_fair": 98.92, "message": "Okay \u2014 let me put a real closing number on the table. Your best clean comp by mileage was $13,523, so I'll meet that condition premium and go to $13,500. That's a fair, comp-backed price for a 72k car with a repaired chip, and I'm ready to close today at that number. Deal?", "thoughts": "Seller held firm at $13,900 and is asking for my closing number \u2014 a sign they want to wrap up. Their condition argument has some merit around $13,500.", "reasoning": "Fair value is ~$13,400, comfortably under my $14,023 reservation. I'll offer $13,500 near the top comp and signal it's close to my ceiling to push a deal.", "fair_value_estimate": "Comparable sales cluster around $13,200\u2013$13,900 for similar mileage. At 72,245 miles with only a repaired windshield chip, this car is worth about $13,400.", "fv_number": 13400.0}, {"n": 7, "speaker": "seller", "action": "propose", "number": 13700, "pct_fair": 100.38, "message": "We're close, and I appreciate you meeting the condition premium. But $13,500 is exactly your best clean comp \u2014 and this car is cleaner than that comp had a documented repair rather than lingering curb rash, plus you're getting a today-close with a serious seller. I'll split the remaining gap and come down to $13,700. That's a genuine final-stretch number and I'm ready to shake on it today \u2014 can you meet me there?", "thoughts": "The buyer moved up $300 immediately after my hold \u2014 that's hard evidence they had room beyond $13,200 and likely still do beyond $13,500. Their \"ready to close today\" framing is pressure to stop me testing further. It's a move, not a wall.", "reasoning": "I held last turn, so I'm now free to move. They moved after my hold, proving room above $13,500. I'll make one small, decelerating concession to a number above my estimate ($13,750) to test whether there's still room and to signal we're near the end \u2014 this buys a likely close at the top of the range rather than accepting their figure prematurely.", "fair_value_estimate": "Around $13,500. Closest-mileage comps ($13,523 at 73,317 mi; $13,233 at 73,563 mi) bracket this car. Repaired windshield chip is cosmetically resolved. Fair value ~$13,400\u2013$13,600.", "fv_number": 13400.0}, {"n": 8, "speaker": "buyer", "action": "propose", "number": 13600, "pct_fair": 99.65, "message": "We're basically there. Let's split the last $200 and call it at $13,600 \u2014 that's a fair number for both of us and I'll shake on it right now. Say yes and it's done today.", "thoughts": "Seller split the gap to $13,700 and signaled it's final-stretch. We're $200 apart and both want to close.", "reasoning": "$13,700 is above my $13,400 fair value but well under reservation. I'll split the difference once more at $13,600 to try to capture the last $100.", "fair_value_estimate": "Comparable sales cluster around $13,200\u2013$13,900 for similar mileage. At 72,245 miles with only a repaired windshield chip, this car is worth about $13,400.", "fv_number": 13400.0}, {"n": 9, "speaker": "seller", "action": "hold", "number": 13700, "pct_fair": 100.38, "message": "We really are there \u2014 but I'm going to hold at $13,700. It's a $100 gap, and at this point $13,700 is a fair, comp-topping number for a clean car with a documented repair and a same-day close. You've moved up steadily and I've come down a long way from $14,300; meeting at $13,700 reflects the condition premium we already agreed exists. I'm ready to shake right now at $13,700 \u2014 can you close there?", "thoughts": "The buyer is now $100 below my offer and keeps closing the gap in small steps \u2014 genuine evidence they can reach at least $13,600, plausibly a touch more. But the dollars in dispute are now trivial ($100), and I'm well above my reservation and above fair value.", "reasoning": "I conceded last turn (14,300\u219213,900 hold\u219213,700), so wait \u2014 last turn I proposed 13,700, which was a concession. Per the HOLD RULE, this turn I must HOLD at $13,700, not concede again. The $100 gap is small, but the rule and discipline say hold once more and force them to close at my number.", "fair_value_estimate": "Around $13,500. Closest-mileage comps ($13,523; $13,233) bracket this car. Repaired chip is resolved. Fair value ~$13,400\u2013$13,600.", "fv_number": 13400.0}, {"n": 10, "speaker": "buyer", "action": "accept", "number": 13700, "pct_fair": 100.38, "message": "Fair enough \u2014 you've moved a long way and $100 isn't worth holding this up. Let's close at $13,700. Deal.", "thoughts": "Seller is firmly holding at $13,700 over a $100 gap. They've conceded a lot and clearly want to close there.", "reasoning": "$13,700 is above my fair value estimate but $323 under my reservation, so it's still a good deal. A $100 gap isn't worth risking the deal \u2014 I'll accept.", "fair_value_estimate": "Comparable sales cluster around $13,200\u2013$13,900 for similar mileage. At 72,245 miles with only a repaired windshield chip, this car is worth about $13,400.", "fv_number": 13400.0}]}, {"id": 4, "filename": "20260808_144357_de530d.json", "outcome": "deal", "final_price": 14450, "accepted_by": "seller", "num_turns": 13, "fair_value": 14086, "seller_reservation": 13711, "buyer_reservation": 14461, "asking_price": null, "seller_share": 0.9853333333333333, "car": {"model": "Honda Civic EX", "year": 2018, "mileage": 75671, "color": "blue", "damage": "clean, no damage"}, "fv_summary": {"buyer": {"first": 14000.0, "changed": false, "diff": -86.0, "pct_off": -0.6105352832599744, "count": 7}, "seller": {"first": 14200.0, "changed": true, "diff": 114.0, "pct_off": 0.8093142126934545, "count": 7}}, "turns": [{"n": 0, "speaker": "buyer", "action": "propose", "number": 12800, "pct_fair": 90.87, "message": "Thanks for reaching out. I've been comparing recent sales of this exact model and year \u2014 clean examples with similar mileage have been going for around $13,500\u2013$14,000. Given the 75,671 miles, I'd like to start at $12,800. What price did you have in mind?", "thoughts": "Seller just opened the floor without a number. They likely want top dollar near the higher comps.", "reasoning": "Open low to anchor below fair value, leaving room to climb but stay under my $14,461 reservation.", "fair_value_estimate": "Comparable clean cars near 75k miles sold around $13,700\u2013$14,300. At 75,671 miles, clean, this Civic's fair value is about $14,000.", "fv_number": 14000.0}, {"n": 1, "speaker": "seller", "action": "propose", "number": 15200, "pct_fair": 107.91, "message": "Appreciate you doing the homework \u2014 but the range you're citing leans on the higher-mileage and damaged examples. The clean, no-damage cars are what set the real market here: a 75,444-mile clean Civic sold for $14,276, and a 71,541-mile clean one went for $14,617. This car is clean with no damage, so I'm starting at $15,200. Which comps are you weighting to get to $12,800?", "thoughts": "The buyer is anchoring low and citing a comp range that conveniently caps below fair value while ignoring the clean, similar-mileage sales above $14,000. Their $12,800 is a move, not a limit. Their own $14,000 upper figure is a tell that they see value well above their opening number.", "reasoning": "Did not concede last turn (this is my open), so I anchor high. I'm setting an aggressive but comp-justified anchor above the strongest clean sales to reframe their range downward and give room to trade.", "fair_value_estimate": "Around $14,300. Clean comps at similar mileage: Phoenix 75,444mi clean-ish sold $14,276; Nashville 71,541mi 1-owner clean $14,617; this car is clean/no damage at 75,671mi. Fair value sits in the $14,200\u2013$14,400 band.", "fv_number": 14200.0}, {"n": 2, "speaker": "buyer", "action": "propose", "number": 13400, "pct_fair": 95.13, "message": "Fair points on the clean comps. But note the closest match \u2014 the 75,444-mile clean Civic \u2014 sold for $14,276, and that's the most relevant data point since it's nearly identical mileage to yours. The $14,617 car had lower mileage. There was also a 74,708-mile clean-ish car at $13,771. I'll move up to $13,400 to reflect the clean condition.", "thoughts": "Seller is well-informed and citing the same comps I have. $15,200 is above my reservation, but it's an anchor, not a real target.", "reasoning": "Concede modestly to show good faith while staying well below fair value. Cite the $14,276 comp at nearly identical mileage as my anchor.", "fair_value_estimate": "Comparable clean cars near 75k miles sold around $13,700\u2013$14,300. At 75,671 miles, clean, this Civic's fair value is about $14,000.", "fv_number": 14000.0}, {"n": 3, "speaker": "seller", "action": "propose", "number": 14850, "pct_fair": 105.42, "message": "Good \u2014 we agree the $14,276 car is the closest match, and that's exactly my point: it had a hair less mileage and sold clean. Yours is clean with no damage too, so it belongs at or above that figure, not below it. I'll come down to $14,850 to get this moving. That $13,771 example you cite was \"clean-ish,\" not clean \u2014 so it doesn't set your number. What gets you to a figure that actually reflects the clean, no-damage condition we both acknowledge?", "thoughts": "He's making a modest $600 move and using the $14,276 comp as a ceiling anchor \u2014 but he's the one who put that comp on the table, which tells me he values the car near there. Small move is a tactic, not evidence of low capacity. His \"closest match\" framing actually hands me the argument that mid-$14ks is defensible.", "reasoning": "Did not concede last turn \u2014 I opened. I'll make a small deliberate concession off $15,200 to keep momentum and buy reciprocal movement, landing well above my estimate. The $14,276 comp is his own number, so I use it: this clean car should clear it, not sit under it.", "fair_value_estimate": "Around $14,300. Clean comps at similar mileage: Phoenix 75,444mi clean $14,276; Nashville 71,541mi clean $14,617. This car clean/no damage at 75,671mi sits ~$14,200\u2013$14,400.", "fv_number": 14400.0}, {"n": 4, "speaker": "buyer", "action": "propose", "number": 13800, "pct_fair": 97.97, "message": "Here's the thing: the $14,276 car had lower mileage than yours, and mileage moves price. More miles should put yours slightly below that figure, not above it. The clean 90,654-mile car sold for $13,484 \u2014 that's the mileage trend at work. Splitting the difference on the condition premium, I'll go to $13,800.", "thoughts": "Seller anchoring on $14,276 as a floor, but that car had lower mileage. They've moved $350; I should keep them climbing down toward $14,000.", "reasoning": "Push back on the \"at or above $14,276\" logic\u2014more miles means less value. Move to ~$13,800 to stay under fair value with room to settle around $14,000.", "fair_value_estimate": "Comparable clean cars near 75k miles sold around $13,700\u2013$14,300. At 75,671 miles, clean, this Civic's fair value is about $14,000.", "fv_number": 14000.0}, {"n": 5, "speaker": "seller", "action": "hold", "number": 14850, "pct_fair": 105.42, "message": "The mileage math doesn't move the number the way you're framing it: yours is 227 miles over the $14,276 comp \u2014 that's a rounding difference, worth tens of dollars, not hundreds. Meanwhile you keep passing over the 71,541-mile clean car at $14,617, which brackets the value on the high side. So I'm staying at $14,850 \u2014 it's squarely supported by the two closest clean sales. What specific dollar figure do you assign to 227 miles, and how do you reconcile it with the $14,617 sale?", "thoughts": "He's using the mileage trend selectively \u2014 227 miles over the closest comp is a rounding error, not a discount, and he skips the 71,541mi $14,617 sale. His $400 move plus \"splitting the difference\" framing is a push to settle mid-range; steady small moves are tactics, not a revealed wall.", "reasoning": "Did not concede last turn's a repeat \u2014 I conceded on my previous turn ($15,200\u2192$14,850), so THIS turn must be a HOLD. I hold at $14,850, refuse the mileage sleight-of-hand, and put a question to him.", "fair_value_estimate": "Around $14,300. Clean comps: 75,444mi $14,276; 71,541mi $14,617; 90,654mi clean $13,484. At 75,671mi clean the interpolated value is ~$14,200\u2013$14,300.", "fv_number": 14300.0}, {"n": 6, "speaker": "buyer", "action": "propose", "number": 14000, "pct_fair": 99.39, "message": "Okay, I'll grant you the 227 miles is a minor factor. But that argues your car should land right at the $14,276 comp, not $340 above it \u2014 the $14,617 car had 4,000 fewer miles, which is a real gap, not rounding. Averaging the two closest clean sales lands squarely around $14,000. I'll move to $14,000, which is genuinely fair for both of us.", "thoughts": "Seller held at $14,850 and made a decent point on the 227-mile gap. They're firm but engaging. I need to keep them below my $14,461 reservation.", "reasoning": "Concede he's right the 227 miles is minor\u2014so anchor squarely on the $14,276 comp itself. Move to $14,000, framing it as fair value between the comps.", "fair_value_estimate": "Comparable clean cars near 75k miles sold around $13,700\u2013$14,300. At 75,671 miles, clean, this Civic's fair value is about $14,000.", "fv_number": 14000.0}, {"n": 7, "speaker": "seller", "action": "propose", "number": 14600, "pct_fair": 103.65, "message": "We're now agreeing on the fundamentals: clean condition, closest match at $14,276, and a higher bracket at $14,617. That average you cite pulls down only because you're weighting the lower-mileage car's gap while dismissing that this car is clean with zero damage \u2014 which the market pays a premium for. $14,000 sits below where the clean sales actually cluster. I'll come to $14,600 to close the distance. If you're anchoring on the $14,276 comp, what's stopping you from meeting near it, since yours is essentially the same mileage and same clean condition?", "thoughts": "He conceded after my hold \u2014 that's genuine evidence of more room, not a wall, so I raise my estimate. His \"genuinely fair for both of us\" framing is a close attempt anchored at $14,000, but $14,000 is below the interpolated clean value; capacity clearly extends higher since he moved twice against my firmness.", "reasoning": "Did not concede last turn (I held), so I may move now. I'll make a small, decelerating concession off $14,850 to buy continued movement, landing above my raised $14,450 estimate. This keeps a comp-justified number in front of him and tests whether he'll climb into the mid-$14ks.", "fair_value_estimate": "Around $14,300. Clean comps: 75,444mi $14,276; 71,541mi $14,617. At 75,671mi clean the value sits ~$14,200\u2013$14,300.", "fv_number": 14300.0}, {"n": 8, "speaker": "buyer", "action": "propose", "number": 14276, "pct_fair": 101.35, "message": "You've made my case for me \u2014 you keep calling the $14,276 car the closest match on both mileage and clean condition. So let's meet right there: I'll come up to $14,276, exactly that comp. That's the strongest single data point we have and it's your own reference. Deal at $14,276?", "thoughts": "Seller dropped to $14,600, still above my $14,461 reservation. He's inviting me to meet near the $14,276 comp\u2014good, use his own logic.", "reasoning": "Take his invitation: anchor exactly on the $14,276 comp he calls the closest match. Move to $14,276 to frame it as his own number and stay well under reservation.", "fair_value_estimate": "Comparable clean cars near 75k miles sold around $13,700\u2013$14,300. At 75,671 miles, clean, this Civic's fair value is about $14,000.", "fv_number": 14000.0}, {"n": 9, "speaker": "seller", "action": "hold", "number": 14600, "pct_fair": 103.65, "message": "The $14,276 comp is the floor of the clean range, not the target \u2014 the same-clean-condition car at $14,617 sets the top, and yours belongs between them, not pinned to the bottom. We're $324 apart, which is inside the noise of these comps. I'm holding at $14,600. Meet me there and we're done today \u2014 what's keeping you from splitting that last sliver given the $14,617 clean sale on the table?", "thoughts": "He's using my own \"closest match\" language to close at exactly the comp \u2014 clever framing, and $14,276 is a genuinely strong, defensible number. He's shown room by moving five times; the ceiling is likely a touch higher, but the remaining dollars in dispute ($14,276 vs my $14,600 = $324) are thin.", "reasoning": "Did not concede last turn \u2014 wait, I did concede last turn ($14,850\u2192$14,600), so THIS turn must be a HOLD. I hold at $14,600, only $324 above his offer, and push him the last small step. I won't accept $14,276 while an untested cushion remains and the hold rule binds.", "fair_value_estimate": "Around $14,300. Clean comps: 75,444mi $14,276; 71,541mi $14,617. At 75,671mi clean the value sits ~$14,200\u2013$14,300.", "fv_number": 14300.0}, {"n": 10, "speaker": "buyer", "action": "propose", "number": 14400, "pct_fair": 102.23, "message": "I hear you on the range, but $14,617 had 4,000 fewer miles \u2014 that's a real difference, not noise. I'll meet you most of the way: $14,400. That's above the $14,276 comp you called the closest match, which fairly reflects the clean condition. This is close to the top of what I can justify, so let's close it here.", "thoughts": "Seller held at $14,600, above my $14,461 reservation. He wants to split near the top of the range. I cannot go above $14,461.", "reasoning": "Nudge up modestly to $14,400\u2014still under reservation\u2014and signal this is near my ceiling. Frame it as splitting the difference on his terms.", "fair_value_estimate": "Comparable clean cars near 75k miles sold around $13,700\u2013$14,300. At 75,671 miles, clean, this Civic's fair value is about $14,000.", "fv_number": 14000.0}, {"n": 11, "speaker": "seller", "action": "propose", "number": 14500, "pct_fair": 102.94, "message": "Fair enough on the mileage gap \u2014 I'll grant it deserves a small haircut off the top of the range. You've moved to $14,400 and I'll meet you one notch up at $14,500. That's the last $100, it sits right where a clean, no-damage car at this mileage should land, and it closes us today. Say yes and it's done.", "thoughts": "He moved again after my hold \u2014 genuine evidence of room, not a wall. But we're now $200 apart, comfortably above fair value and well above my reservation; his ceiling is likely near here and the risk-adjusted value of squeezing the last sliver is low.", "reasoning": "Did not concede last turn (I held at $14,600), so I may move now. $14,400 is above fair value and far above my reservation; the disputed $200 is small and he's shown resistance climbing further. I'll make a tiny decelerating concession to $14,500 \u2014 splitting the last sliver \u2014 to lock the close rather than risk the deal over marginal dollars.", "fair_value_estimate": "Around $14,300. Clean comps: 75,444mi $14,276; 71,541mi $14,617. At 75,671mi clean the value sits ~$14,200\u2013$14,300.", "fv_number": 14300.0}, {"n": 12, "speaker": "buyer", "action": "propose", "number": 14450, "pct_fair": 102.58, "message": "We're basically there. I can't quite get to $14,500, but I'll go to $14,450 \u2014 that's the last I've got and it's a genuine final number. Split the last fifty with me and we shake on it today.", "thoughts": "Seller at $14,500\u2014just $39 over my reservation of $14,461. Very close. One more small nudge should close it under my ceiling.", "reasoning": "$14,500 exceeds my $14,461 cap, so I can't accept. Offer $14,450\u2014splits the last gap and stays just under reservation. Signal it's truly final.", "fair_value_estimate": "Comparable clean cars near 75k miles sold around $13,700\u2013$14,300. At 75,671 miles, clean, this Civic's fair value is about $14,000.", "fv_number": 14000.0}, {"n": 13, "speaker": "seller", "action": "accept", "number": 14450, "pct_fair": 102.58, "message": "Done. $14,450 it is \u2014 you negotiated hard and we landed on a clean, comp-supported number. Let's shake on it.", "thoughts": "He's come up six times, now offering $14,450 \u2014 a strong outcome ~$150 above fair value and $739 above my reservation. Squeezing the final $50 risks a clean deal for a rounding-error sum; the expected value of accepting is clearly higher than gambling on another round.", "reasoning": "I conceded last turn, so I'd normally hold \u2014 but the exceptions allow accept at any time. The dollars in dispute are $50, far below any threshold worth risking a deal that beats my reservation by hundreds. I accept his standing $14,450.", "fair_value_estimate": "Around $14,300. Clean comps: 75,444mi $14,276; 71,541mi $14,617. At 75,671mi clean the value sits ~$14,200\u2013$14,300.", "fv_number": 14300.0}]}];
+const STATS = {"total": 5, "outcomes": {"deal": 5}, "deals": 5, "avg_seller_share": 0.6192, "avg_deal_turns": 11.8, "shares": [0.456, 0.424, 0.6613333333333333, 0.5693333333333334, 0.9853333333333333], "fv_tracked": 5, "buyer_drift_count": 0, "seller_drift_count": 1};
+
+const money = n => (n === null || n === undefined) ? "\u2014" : "$" + Number(n).toLocaleString(undefined, {maximumFractionDigits:0});
+const esc = s => (s === null || s === undefined) ? "" :
+  String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+(function renderStats(){
+  const el = document.getElementById('stats');
+  const o = STATS.outcomes || {};
+  const cells = [];
+  cells.push(`<div class="stat"><div class="label">Negotiations</div><div class="value">${STATS.total}</div></div>`);
+  cells.push(`<div class="stat"><div class="label">Deals closed</div><div class="value">${STATS.deals}<small> / ${STATS.total}</small></div></div>`);
+  const share = STATS.avg_seller_share;
+  cells.push(`<div class="stat"><div class="label">Avg seller share</div><div class="value">${share===null?'\u2014':(share*100).toFixed(0)+'%'}</div></div>`);
+  const at = STATS.avg_deal_turns;
+  cells.push(`<div class="stat"><div class="label">Avg turns to deal</div><div class="value">${at===null?'\u2014':at.toFixed(1)}</div></div>`);
+  cells.push(`<div class="stat"><div class="label">Buyer FV drifted</div><div class="value">${STATS.buyer_drift_count}<small> / ${STATS.fv_tracked}</small></div></div>`);
+  cells.push(`<div class="stat"><div class="label">Seller FV drifted</div><div class="value">${STATS.seller_drift_count}<small> / ${STATS.fv_tracked}</small></div></div>`);
+  el.innerHTML = cells.join('');
+})();
+
+(function renderMeter(){
+  const el = document.getElementById('shareMeter');
+  const share = STATS.avg_seller_share;
+  if (share === null) { el.style.display = 'none'; return; }
+  const pct = Math.max(0, Math.min(1, share)) * 100;
+  el.innerHTML =
+    `<div class="label"><span>Who captured the bargaining zone</span><span>${(share*100).toFixed(1)}% seller</span></div>
+     <div class="track">
+        <div class="mid"></div>
+        <div class="needle" style="left:${pct}%"></div>
+        <div class="caption" style="left:${pct}%">avg landing</div>
+     </div>
+     <div class="endlabels"><span>&#9664; buyer captures all</span><span>even split</span><span>seller captures all &#9654;</span></div>`;
+})();
+
+const tip = document.createElement('div');
+tip.id = 'tip';
+tip.style.cssText = 'position:fixed;z-index:50;display:none;background:var(--ink);color:var(--paper);'
+  + 'font-family:ui-monospace,Menlo,monospace;font-size:12px;padding:8px 10px;border-radius:3px;'
+  + 'pointer-events:none;max-width:240px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,0.25)';
+document.body.appendChild(tip);
+function showTip(evt, htmlStr){
+  tip.innerHTML = htmlStr;
+  tip.style.display = 'block';
+  const x = evt.clientX, y = evt.clientY;
+  tip.style.left = Math.min(x + 14, window.innerWidth - 250) + 'px';
+  tip.style.top = (y + 14) + 'px';
+}
+function hideTip(){ tip.style.display = 'none'; }
+document.addEventListener('click', e => { if (!e.target.closest('[data-tip]')) hideTip(); });
+
+function aggregateChart(){
+  const W = 900, H = 360, padL = 56, padR = 24, padT = 20, padB = 64;
+
+  const speakerAt = n => (n % 2 === 0) ? 'buyer' : 'seller';
+
+  const byTurn = {};
+  const discussAt = {};
+  let maxTurn = 0;
+  DATA.forEach(neg => {
+    neg.turns.forEach(t => {
+      maxTurn = Math.max(maxTurn, t.n);
+      if (t.pct_fair !== null) {
+        (byTurn[t.n] = byTurn[t.n] || []).push(t.pct_fair);
+      } else if (t.action === 'discuss') {
+        discussAt[t.n] = (discussAt[t.n] || 0) + 1;
+      }
+    });
+  });
+  if (maxTurn === 0 && !Object.keys(byTurn).length)
+    return '<div class="empty">No negotiations to summarize yet.</div>';
+
+  const totalNegs = DATA.length;
+  const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+
+  const series = { buyer: [], seller: [] };
+  for (let n = 0; n <= maxTurn; n++){
+    if (!byTurn[n] || !byTurn[n].length) continue;
+    const who = speakerAt(n);
+    series[who].push({ n, mean: avg(byTurn[n]), count: byTurn[n].length,
+                       lo: Math.min(...byTurn[n]), hi: Math.max(...byTurn[n]) });
+  }
+
+  const allMeans = [...series.buyer, ...series.seller];
+  const vals = allMeans.flatMap(p=>[p.lo,p.hi]).concat([100]);
+  let ymin = Math.floor(Math.min(...vals)/5)*5 - 2;
+  let ymax = Math.ceil(Math.max(...vals)/5)*5 + 2;
+
+  const X = n => padL + (maxTurn ? n/maxTurn : 0.5) * (W - padL - padR);
+  const Y = v => padT + (1 - (v - ymin)/(ymax - ymin)) * (H - padT - padB);
+
+  let grid = '';
+  for (let v = Math.ceil(ymin/5)*5; v <= ymax; v += 5){
+    grid += `<line x1="${padL}" x2="${W-padR}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--line)"/>
+             <text x="${padL-8}" y="${Y(v).toFixed(1)}" dy="4" text-anchor="end" fill="var(--muted)" font-size="11" font-family="ui-monospace,Menlo,monospace">${v}%</text>`;
+  }
+
+  let brs=[], srs=[];
+  DATA.forEach(n=>{ if(n.fair_value){brs.push(100*n.buyer_reservation/n.fair_value); srs.push(100*n.seller_reservation/n.fair_value);} });
+  const band = brs.length ? `<rect x="${padL}" y="${Y(avg(brs)).toFixed(1)}" width="${(W-padL-padR).toFixed(1)}"
+       height="${Math.abs(Y(avg(srs))-Y(avg(brs))).toFixed(1)}" fill="var(--zopa)" opacity="0.22"/>` : '';
+  const fairLine = `<line x1="${padL}" x2="${W-padR}" y1="${Y(100).toFixed(1)}" y2="${Y(100).toFixed(1)}"
+       stroke="#8a6d17" stroke-width="1.5" stroke-dasharray="3 3"/>
+     <text x="${W-padR}" y="${Y(100).toFixed(1)}" dy="-5" text-anchor="end" fill="#8a6d17" font-size="11"
+       font-family="ui-monospace,Menlo,monospace">fair value (100%)</text>`;
+
+  function draw(pts, color){
+    if (!pts.length) return '';
+    const ribbon = 'M' + pts.map(p=>`${X(p.n).toFixed(1)},${Y(p.hi).toFixed(1)}`).join(' L')
+      + ' L' + pts.slice().reverse().map(p=>`${X(p.n).toFixed(1)},${Y(p.lo).toFixed(1)}`).join(' L') + ' Z';
+    const meanLine = pts.map((p,i)=>`${i?'L':'M'}${X(p.n).toFixed(1)},${Y(p.mean).toFixed(1)}`).join(' ');
+    const dots = pts.map(p=>{
+      const opacity = 0.35 + 0.65*(p.count/totalNegs);
+      const tipHtml = `<b>${speakerAt(p.n)} &middot; turn ${p.n}</b><br>avg ${p.mean.toFixed(1)}% of fair`
+        + `<br>range ${p.lo.toFixed(1)}\u2013${p.hi.toFixed(1)}%<br>${p.count} of ${totalNegs} negotiations`;
+      return `<circle cx="${X(p.n).toFixed(1)}" cy="${Y(p.mean).toFixed(1)}" r="5" fill="${color}"
+        opacity="${opacity.toFixed(2)}" style="cursor:pointer" data-tip="1"
+        onclick='showTip(event, ${JSON.stringify(tipHtml)})'></circle>`;
+    }).join('');
+    return `<path d="${ribbon}" fill="${color}" opacity="0.1"/>
+            <path d="${meanLine}" fill="none" stroke="${color}" stroke-width="2.5"/>${dots}`;
+  }
+
+  let axis = '';
+  for (let n = 0; n <= maxTurn; n++){
+    const who = speakerAt(n);
+    const c = who === 'buyer' ? 'var(--buyer)' : 'var(--seller)';
+    axis += `<circle cx="${X(n).toFixed(1)}" cy="${H-padB+22}" r="4" fill="${c}"/>`;
+    if (n % 2 === 0 || n === maxTurn)
+      axis += `<text x="${X(n).toFixed(1)}" y="${H-padB+40}" text-anchor="middle" fill="var(--muted)" font-size="10" font-family="ui-monospace,Menlo,monospace">${n}</text>`;
+    if (discussAt[n])
+      axis += `<text x="${X(n).toFixed(1)}" y="${H-padB+8}" text-anchor="middle" fill="var(--muted)" font-size="9" font-family="ui-monospace,Menlo,monospace" opacity="0.8">talk</text>`;
+  }
+  axis += `<text x="${padL}" y="${H-6}" fill="var(--muted)" font-size="11" font-family="ui-monospace,Menlo,monospace">turn (buyer opens, then alternating)</text>`;
+
+  return `<div class="chart-wrap">
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Average negotiation trajectory">
+      ${grid}${band}${fairLine}
+      ${draw(series.seller,'var(--seller)')}
+      ${draw(series.buyer,'var(--buyer)')}
+      ${axis}
+    </svg></div>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--buyer)"></span>avg buyer offer</span>
+      <span><span class="swatch" style="background:var(--seller)"></span>avg seller offer</span>
+      <span><span class="swatch band" style="background:var(--zopa)"></span>avg bargaining zone</span>
+      <span style="opacity:0.7">shaded = full range &middot; dots fade where fewer negotiations reach that turn</span>
+    </div>`;
+}
+
+function trajectoryChart(neg){
+  const pts = neg.turns.filter(t => typeof t.number === 'number')
+                       .map(t => ({n:t.n, num:t.number, who:t.speaker}));
+  const W = 900, H = 300, padL = 70, padR = 130, padT = 24, padB = 34;
+
+  const ys = [neg.seller_reservation, neg.buyer_reservation, neg.fair_value,
+              neg.asking_price, ...pts.map(p=>p.num)].filter(v => typeof v === 'number');
+  let ymin = Math.min(...ys), ymax = Math.max(...ys);
+  const padY = (ymax - ymin) * 0.08 || 500;
+  ymin -= padY; ymax += padY;
+
+  const xs = pts.map(p=>p.n);
+  const xmin = pts.length ? Math.min(...xs) : 0;
+  const xmax = pts.length ? Math.max(...xs) : 1;
+  const X = n => padL + (xmax===xmin ? 0.5 : (n - xmin)/(xmax - xmin)) * (W - padL - padR);
+  const Y = v => padT + (1 - (v - ymin)/(ymax - ymin)) * (H - padT - padB);
+
+  const bandTop = Y(neg.buyer_reservation), bandBot = Y(neg.seller_reservation);
+
+  const buyerPts = pts.filter(p=>p.who==='buyer');
+  const sellerPts = pts.filter(p=>p.who==='seller');
+  const line = arr => arr.map((p,i)=>`${i?'L':'M'}${X(p.n).toFixed(1)},${Y(p.num).toFixed(1)}`).join(' ');
+  const fv = neg.fair_value;
+  const dots = (arr,color) => arr.map(p=>{
+    const pct = fv ? (100*p.num/fv) : null;
+    const diff = fv ? (p.num - fv) : null;
+    const sign = diff > 0 ? '+' : '';
+    const tipHtml = `<b>${p.who} &middot; turn ${p.n}</b><br>${money(p.num)}`
+      + (fv ? `<br>${pct.toFixed(1)}% of fair value<br>${sign}${money(diff)} vs fair` : '');
+    return `<circle cx="${X(p.n).toFixed(1)}" cy="${Y(p.num).toFixed(1)}" r="6" fill="${color}"
+      style="cursor:pointer" data-tip="1"
+      onclick='showTip(event, ${JSON.stringify(tipHtml)})'></circle>`;
+  }).join('');
+
+  const refLine = (v,label,color,dash) => {
+    if (typeof v !== 'number') return '';
+    const y = Y(v).toFixed(1);
+    return `<line x1="${padL}" x2="${W-padR}" y1="${y}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}" opacity="0.8"/>
+            <text x="${W-padR+8}" y="${y}" dy="4" fill="${color}" font-size="12" font-family="ui-monospace,Menlo,monospace">${label} ${money(v)}</text>`;
+  };
+
+  const final = (neg.outcome === 'deal' && typeof neg.final_price === 'number')
+    ? `<line x1="${padL}" x2="${W-padR}" y1="${Y(neg.final_price).toFixed(1)}" y2="${Y(neg.final_price).toFixed(1)}" stroke="var(--ink)" stroke-width="2"/>
+       <text x="${W-padR+8}" y="${Y(neg.final_price).toFixed(1)}" dy="4" fill="var(--ink)" font-size="12" font-weight="700" font-family="ui-monospace,Menlo,monospace">DEAL ${money(neg.final_price)}</text>`
+    : '';
+
+  return `
+  <div class="chart-wrap">
+  <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Price trajectory">
+    <rect x="${padL}" y="${Math.min(bandTop,bandBot).toFixed(1)}" width="${(W-padL-padR).toFixed(1)}"
+          height="${Math.abs(bandBot-bandTop).toFixed(1)}" fill="var(--zopa)" opacity="0.28"/>
+    <text x="${padL+6}" y="${Math.min(bandTop,bandBot)+16}" fill="#8a6d17" font-size="11"
+          font-family="ui-monospace,Menlo,monospace" opacity="0.9">ZOPA (hidden from agents)</text>
+    ${refLine(neg.fair_value,'fair', '#8a6d17','2 3')}
+    ${refLine(neg.asking_price,'ask', 'var(--seller)','4 4')}
+    <path d="${line(sellerPts)}" fill="none" stroke="var(--seller)" stroke-width="2.5"/>
+    <path d="${line(buyerPts)}" fill="none" stroke="var(--buyer)" stroke-width="2.5"/>
+    ${dots(sellerPts,'var(--seller)')}
+    ${dots(buyerPts,'var(--buyer)')}
+    ${final}
+  </svg>
+  </div>
+  <div class="legend">
+    <span><span class="swatch" style="background:var(--buyer)"></span>buyer offers</span>
+    <span><span class="swatch" style="background:var(--seller)"></span>seller offers</span>
+    <span><span class="swatch band" style="background:var(--zopa)"></span>bargaining zone</span>
+    <span><span class="swatch" style="background:#8a6d17"></span>fair value</span>
+  </div>`;
+}
+
+function fvPanel(neg){
+  const fv = neg.fair_value;
+  const card = (who, summary) => {
+    const s = summary || {};
+    if (s.first === null || s.first === undefined) {
+      return `<div class="fv-card ${who}"><div class="who">${who}</div>
+        <div class="row"><span class="k">estimate</span><span class="v">no estimate parsed</span></div></div>`;
+    }
+    const badge = s.changed
+      ? `<span class="drift-badge">drifted</span>`
+      : `<span class="nodrift-badge">held steady</span>`;
+    const offSign = (s.diff !== null && s.diff > 0) ? '+' : '';
+    const offClass = (s.pct_off !== null && Math.abs(s.pct_off) > 10) ? 'off' : '';
+    return `<div class="fv-card ${who}">
+      <div class="who">${who} ${badge}</div>
+      <div class="row"><span class="k">their first estimate</span><span class="v">${money(s.first)}</span></div>
+      <div class="row"><span class="k">actual fair value</span><span class="v">${money(fv)}</span></div>
+      <div class="row"><span class="k">off by</span>
+        <span class="v ${offClass}">${s.diff===null?'\u2014':offSign+money(s.diff)}${s.pct_off===null?'':' ('+(s.pct_off>0?'+':'')+s.pct_off.toFixed(1)+'%)'}</span></div>
+      <div class="row"><span class="k">estimates given</span><span class="v">${s.count}</span></div>
+    </div>`;
+  };
+  const fvs = neg.fv_summary || {};
+  return `<div class="fv-panel">${card('buyer', fvs.buyer)}${card('seller', fvs.seller)}</div>`;
+}
+
+function transcript(neg){
+  if (!neg.turns.length) return '';
+  const rows = neg.turns.map(t => {
+    const act = t.action + (typeof t.number==='number' ? ' &middot; ' + money(t.number) : '');
+    const priv = (t.thoughts || t.reasoning || t.fair_value_estimate) ? `
+      <details>
+        <summary>show private reasoning</summary>
+        <div class="private">
+          ${t.fair_value_estimate ? `<div class="lbl">fair value estimate</div><div>${esc(t.fair_value_estimate)}</div>`:''}
+          ${t.thoughts ? `<div class="lbl">thoughts on counterpart</div><div>${esc(t.thoughts)}</div>`:''}
+          ${t.reasoning ? `<div class="lbl">reasoning</div><div>${esc(t.reasoning)}</div>`:''}
+        </div>
+      </details>` : '';
+    return `<div class="turn ${t.speaker}">
+       <div class="who">${esc(t.speaker)} <span class="act">&mdash; ${esc(act)}</span></div>
+       <div class="msg">${esc(t.message)}</div>
+       ${priv}
+     </div>`;
+  }).join('');
+  return `<div class="turns">${rows}</div>`;
+}
+
+(function renderAggregate(){
+  const el = document.getElementById('aggregate');
+  if (el) el.innerHTML = aggregateChart();
+})();
+
+(function renderList(){
+  const el = document.getElementById('list');
+  if (!DATA.length) {
+    el.innerHTML = `<div class="empty">No negotiations found in <code>runs/</code>. Run a batch first, then rebuild.</div>`;
+    return;
+  }
+  el.innerHTML = DATA.map((neg, i) => {
+    const isDeal = neg.outcome === 'deal';
+    const pill = isDeal
+      ? `<span class="pill deal">deal ${money(neg.final_price)}</span>`
+      : `<span class="pill nodeal">${esc((neg.outcome||'').replace(/_/g,' '))}</span>`;
+    const car = neg.car || {};
+    const carline = `${car.year||''} ${car.model||''} &middot; ${car.mileage? Number(car.mileage).toLocaleString()+' mi':''} &middot; ${esc(car.damage||'')}`;
+    const shareTxt = (neg.seller_share!==null && neg.seller_share!==undefined)
+        ? ` &middot; seller took ${(neg.seller_share*100).toFixed(0)}% of zone` : '';
+    const fvs = neg.fv_summary || {};
+    const anyDrift = (fvs.buyer && fvs.buyer.changed) || (fvs.seller && fvs.seller.changed);
+    const driftPill = anyDrift ? `<span class="pill drift">fv drifted</span>` : '';
+    return `<details class="neg">
+      <summary>
+        <span class="idx">${String(i+1).padStart(2,'0')}</span>
+        <span>
+          <div class="neg-title">${esc(carline)}</div>
+          <div class="neg-meta">${neg.num_turns??'?'} turns${shareTxt} &middot; ${esc(neg.filename)}</div>
+        </span>
+        <span style="display:flex; gap:8px; align-items:center;">${driftPill}${pill}</span>
+      </summary>
+      <div class="neg-body">
+        ${trajectoryChart(neg)}
+        ${fvPanel(neg)}
+        ${transcript(neg)}
+      </div>
+    </details>`;
+  }).join('');
+})();
+</script>
+</body>
+</html>
