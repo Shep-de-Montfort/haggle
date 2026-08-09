@@ -7,7 +7,11 @@ import re
 load_dotenv()
 client = Anthropic()
 
-#HELPER FUNCS 
+MODEL = "claude-sonnet-5"
+MAX_TOKENS = 5000
+
+
+# HELPER FUNCS
 def extract_section(text, tag):
     pattern = f"<{tag}>(.*?)</{tag}>"
     match = re.search(pattern, text, re.DOTALL)
@@ -54,27 +58,41 @@ submit_offer_schema = {
     }
 }
 
+
 def submit_offer(action, number):
     valid_actions = ["discuss", "hold", "propose", "accept", "walk_away"]
     if action not in valid_actions:
         raise ValueError(f"Unsupported action: {action}")
-    if action in ["discuss","walk_away"] and number is not None:
+    if action in ["discuss", "walk_away"] and number is not None:
         raise ValueError(f"{action} requires number to be null")
     if isinstance(number, float) and number.is_integer():
         number = int(number)
-    if action in ["propose", "hold", "accept"] and not isinstance(number,int):
+    if action in ["propose", "hold", "accept"] and not isinstance(number, int):
         raise ValueError(f"{action} requires an integer, but got {number!r} (type: {type(number).__name__})")
     if action in ["propose", "hold", "accept"] and number < 0:
-        raise ValueError(f"{number} must be a positive integer") 
-    if action in ["propose", "hold", "accept"] and isinstance(number,bool):
-        raise ValueError(f"number cannot be a boolean; this is your proposed dollar offer")
+        raise ValueError(f"{number} must be a positive integer")
+    if action in ["propose", "hold", "accept"] and isinstance(number, bool):
+        raise ValueError("number cannot be a boolean; this is your proposed dollar offer")
     return {"number": number, "action": action}
 
 
-#AGENT CLASS
+# AGENT CLASS
 class NegotiatingAgent:
+    """One side of a negotiation.
+
+    system_prompt may be a plain string OR a list of content blocks. Passing blocks
+    is what enables prompt caching: build_prompts() marks the static instruction
+    block with cache_control, so it is written to cache once and then read back at
+    10% of the input price on every subsequent turn AND on every later negotiation
+    in the batch (cache entries live 5 minutes and refresh for free on each hit).
+
+    Note: the minimum cacheable prompt is 1,024 tokens on Sonnet. The seller's
+    static block clears that easily; the barebones buyer's may not, in which case
+    the cache_control marker is silently ignored and nothing breaks.
+    """
+
     def __init__(self, system_prompt):
-        self.system_prompt= system_prompt
+        self.system_prompt = system_prompt
         self.messages = []
 
     def reply(self, incoming_message):
@@ -84,8 +102,13 @@ class NegotiatingAgent:
         last_error = None
         for attempt in range(max_retries):
             response = client.messages.create(
-                model="claude-sonnet-5",
-                max_tokens=5000,
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                # Top-level automatic caching: the breakpoint walks forward as the
+                # conversation grows, so the message history is cached too, not just
+                # the system prompt. Combines with the explicit block-level breakpoint
+                # set in build_prompts().
+                cache_control={"type": "ephemeral"},
                 system=self.system_prompt,
                 messages=self.messages,
                 tools=[submit_offer_schema],
@@ -95,23 +118,26 @@ class NegotiatingAgent:
             # sort response blocks by type
             text_blocks = [b for b in response.content if b.type == "text"]
             tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
-    
+
             # pull the prose message out of the text
             combined_text = "".join(b.text for b in text_blocks)
             your_message = extract_section(combined_text, "your_message")
             thoughts_on_counterpart = extract_section(combined_text, "thoughts_on_counterpart")
             reasoning = extract_section(combined_text, "reasoning")
-            fair_value_estimate = extract_section(combined_text,"fair_value_estimate")
-            opponent_limit_estimate = extract_section(combined_text,"opponent_limit_estimate")
+            fair_value_estimate = extract_section(combined_text, "fair_value_estimate")
+            # Optional: only the disciplined seller prompt asks for this one, so a
+            # missing value is not a failure. It stays None for the barebones buyer.
+            opponent_limit_estimate = extract_section(combined_text, "opponent_limit_estimate")
 
-            if your_message is None or reasoning is None or thoughts_on_counterpart is None or fair_value_estimate is None:                
+            if (your_message is None or reasoning is None
+                    or thoughts_on_counterpart is None or fair_value_estimate is None):
                 print("DEBUG - raw model text on missing-tags failure:")
                 print(combined_text)
                 print("---")
                 self.messages.append({
                     "role": "assistant",
                     "content": response.content})
-                
+
                 correction_blocks = []
                 # If it called the tool, we must answer that tool_use — truthfully, no error.
                 for block in tool_use_blocks:
@@ -121,13 +147,15 @@ class NegotiatingAgent:
                         "content": "Received. But your text response was missing required tags — see below.",
                         "is_error": False,
                     })
-                #plus the correciton as text
+                # plus the correction as text
                 correction_blocks.append({
                     "type": "text",
-                    "text": "You did not include the required <fair_value_estimate>,<opponent_limit_estimate>,<thoughts_on_counterpart>, <reasoning>, and <your_message> tags. You must include all five. Please redo this turn with them.",
+                    "text": ("Your text response was missing one or more required tags. You must "
+                             "include every tag specified in your instructions, each opened and "
+                             "closed exactly as written. Please redo this turn with all of them."),
                 })
-                self.messages.append({"role":"user", "content": correction_blocks})
-                last_error = "missing tags, reasoning or thoughts on counterpart"
+                self.messages.append({"role": "user", "content": correction_blocks})
+                last_error = "missing required tags"
                 continue
 
             # always append the assistant's full response first (protocol requirement)
@@ -135,7 +163,6 @@ class NegotiatingAgent:
 
             # --- CASE: wrong number of tool calls ---
             if len(tool_use_blocks) == 0:
-                # no tool_use to attach a tool_result to; send a plain correction message
                 self.messages.append({
                     "role": "user",
                     "content": "You did not call submit_offer. You MUST call submit_offer exactly once this turn. Please try again.",
@@ -144,7 +171,6 @@ class NegotiatingAgent:
                 continue
 
             if len(tool_use_blocks) > 1:
-                # every tool_use must be answered with a tool_result, so answer them all with an error
                 error_results = []
                 for block in tool_use_blocks:
                     error_results.append({
@@ -160,10 +186,9 @@ class NegotiatingAgent:
             # --- exactly one tool call: validate it ---
             tool_use = tool_use_blocks[0]
             tool_input = tool_use.input
-            action = tool_input.get("action")   # .get() -> None if missing, avoids KeyError
+            action = tool_input.get("action")
             number = tool_input.get("number")
 
-        
             try:
                 tool_output = submit_offer(action=action, number=number)
             except ValueError as e:
@@ -179,7 +204,6 @@ class NegotiatingAgent:
                         }],
                     })
                     continue
-                # invalid values (or missing action) -> send error tool_result, retry
                 self.messages.append({
                     "role": "user",
                     "content": [{
@@ -201,11 +225,10 @@ class NegotiatingAgent:
                     "is_error": False,
                 }],
             })
-            return {"message": your_message, "action": action, "number": number, 
+            return {"message": your_message, "action": action, "number": number,
                     "thoughts_on_counterpart": thoughts_on_counterpart,
                     "reasoning": reasoning,
                     "fair_value_estimate": fair_value_estimate,
                     "opponent_limit_estimate": opponent_limit_estimate}
 
-        # exhausted all retries without a valid tool call
         raise RuntimeError(f"Model failed to produce a valid submit_offer call after retries. Last error: {last_error}")

@@ -1,4 +1,6 @@
 import random
+import json
+import sys
 
 
 def generate_historic_sale(fair_value, mileage_penalty, damage_adjustment):
@@ -47,17 +49,10 @@ def generate_scenario():
     damage_weights = [0.45, 0.11, 0.11, 0.11, 0.11, 0.11]  # see generate_historic_sale
 
     # --- Generate the SUBJECT car's own condition first ---
-    # (previously this was independent random noise, disconnected from
-    # fair_value and using a totally different damage vocabulary than the
-    # comps — meaning the car's own price wasn't actually explained by its
-    # own condition. Now it uses the exact same categories and coefficients
-    # as the comps, so an agent citing "my car has X miles/condition" is
-    # citing something that actually determines this car's own fair_value.)
     car_mileage = random.randint(70000, 82000)
     car_damage = random.choices(damage_notes, weights=damage_weights, k=1)[0]
 
-    # baseline value of a "clean, 75k-mile" example of this model/year —
-    # this replaces the old flat fair_value range as the new starting point
+    # baseline value of a "clean, 75k-mile" example of this model/year
     baseline_value = random.randint(12500, 14000)
 
     # the ACTUAL fair_value for THIS specific car, adjusted for its own
@@ -79,11 +74,6 @@ def generate_scenario():
         for _ in range(10)
     ]
 
-    # anchored off fair_value directly (not off the noisy comps' max), so a
-    # lucky high comp can't blow the opening anchor sky-high
-    asking_price = round(fair_value * 1.15)
-    buyer_opening_anchor = round(fair_value * 0.85)
-
     return {
         "car_facts": {
             "model": "Honda Civic EX",
@@ -96,9 +86,44 @@ def generate_scenario():
         "historic_sales": historic_sales,
         "seller_reservation": seller_reservation,
         "buyer_reservation": buyer_reservation,
-        "fair_value": fair_value
-        #"asking_price": asking_price,
-        #"buyer_opening_anchor": buyer_opening_anchor,
-        
-    
+        # hidden ground truth for scoring — negotiations.py strips this from
+        # both briefs before either agent sees them
+        "fair_value": fair_value,
     }
+
+
+# ---------------------------------------------------------------------------
+# Scenario SETS — for paired comparisons between prompt versions.
+#
+# Comparing two prompts on two different random scenario sets confounds the
+# prompt with scenario difficulty (how far the buyer's hidden ceiling happens
+# to sit above the opening midpoint varies a lot run to run). Generating one
+# set and running every condition against it removes that entirely, so a much
+# smaller sample can detect a real difference.
+# ---------------------------------------------------------------------------
+
+def generate_scenario_set(n, seed=0):
+    """Deterministically generate n scenarios. Same seed -> identical set."""
+    random.seed(seed)
+    return [generate_scenario() for _ in range(n)]
+
+
+def save_scenario_set(scenarios, path="scenario_set.json"):
+    with open(path, "w") as f:
+        json.dump(scenarios, f, indent=2)
+    return path
+
+
+def load_scenario_set(path="scenario_set.json"):
+    with open(path) as f:
+        return json.load(f)
+
+
+if __name__ == "__main__":
+    # python scenarios.py 100        -> writes 100 scenarios to scenario_set.json
+    # python scenarios.py 100 42     -> same, with seed 42
+    n = int(sys.argv[1]) if len(sys.argv) > 1 else 100
+    seed = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+    scenarios = generate_scenario_set(n, seed)
+    path = save_scenario_set(scenarios)
+    print(f"Wrote {len(scenarios)} scenarios (seed={seed}) -> {path}")
